@@ -1,0 +1,34 @@
+# Core
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-dotenv==1.0.1
+pydantic-settings==2.6.1
+
+# Database
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+alembic==1.14.1
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.0
+python-multipart==0.0.20
+
+# Async & HTTP
+httpx==0.28.1
+websockets==14.1
+
+# Templates
+jinja2==3.1.4
+
+# Validation
+email-validator==2.2.0
+cryptography==42.0.8
+
+# AI (для этапа 5)
+openai==1.55.3
+
+# Telegram (для этапа 7)
+aiogram==3.17.0
