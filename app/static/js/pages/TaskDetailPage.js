@@ -32,11 +32,11 @@ export const TaskDetailPage = {
             </div>
         `;
 
-        // Вызываем через TaskDetailPage
-        TaskDetailPage.loadTask(taskId);
+        // Передаём user в loadTask
+        TaskDetailPage.loadTask(taskId, user);
     },
 
-    async loadTask(taskId) {
+    async loadTask(taskId, user) {
         try {
             const token = store.get('token');
             console.log('🔍 Fetching task:', taskId);

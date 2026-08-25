@@ -78,8 +78,10 @@ export const TaskEditPage = {
                                 <label>Дедлайн</label>
                                 <input type="datetime-local" id="editDeadline" class="form-control" value="${task.deadline ? new Date(task.deadline).toISOString().slice(0, 16) : ''}">
                             </div>
-                            <button type="submit" class="btn btn-primary">Сохранить</button>
-                            <button type="button" class="btn btn-secondary" onclick="window.router.navigate('task-detail', {id: ${task.id}})">Отмена</button>
+                            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                                <button type="submit" class="btn btn-primary">Сохранить</button>
+                                <button type="button" class="btn btn-secondary" onclick="window.router.navigate('task-detail', {id: ${task.id}})">Отмена</button>
+                            </div>
                         </form>
                         <div id="editError" class="hidden alert-error" style="margin-top:12px;"></div>
                     </div>
@@ -140,11 +142,19 @@ export const TaskEditPage = {
                         submitBtn.textContent = originalText;
                     }
                 });
+            } else {
+                document.getElementById('editForm').innerHTML = `
+                    <div class="card">
+                        <div class="alert alert-error">❌ Задача не найдена</div>
+                        <button class="btn btn-secondary" onclick="window.router.navigate('tasks')">← Назад</button>
+                    </div>
+                `;
             }
         } catch (error) {
+            console.error('❌ Fetch error:', error);
             document.getElementById('editForm').innerHTML = `
                 <div class="card">
-                    <div class="alert alert-error">❌ Ошибка загрузки задачи: ${error.message}</div>
+                    <div class="alert alert-error">❌ Ошибка загрузки: ${error.message}</div>
                     <button class="btn btn-secondary" onclick="window.router.navigate('tasks')">← Назад</button>
                 </div>
             `;
