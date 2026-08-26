@@ -21,14 +21,12 @@ def create_task(
     Создание новой задачи.
     Только клиенты могут создавать задачи.
     """
-    # Проверяем, что пользователь - клиент
     if current_user.role != "client":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only clients can create tasks"
         )
 
-    # Создаём задачу
     new_task = Task(
         title=task_data.title,
         description=task_data.description,
@@ -58,23 +56,21 @@ def list_tasks(
     """
     Получение списка задач с фильтрацией.
     - Клиент видит только свои задачи
-    - Дизайнер видит назначенные ему задачи
+    - Дизайнер видит все задачи (кроме завершённых)
     - Админ видит все задачи
     """
     query = db.query(Task)
 
     # Фильтр по роли
-    if current_user.role == "admin":
-        # Админ видит все задачи
-        pass
-    elif current_user.role == "designer":
-        # Дизайнер видит только назначенные ему задачи
-        query = query.filter(Task.assigned_designer_id == current_user.id)
-    else:  # client
+    if current_user.role == "client":
         # Клиент видит только свои задачи
         query = query.filter(Task.client_id == current_user.id)
+    elif current_user.role == "designer":
+        # Дизайнер видит все задачи, кроме завершённых
+        query = query.filter(Task.status != TaskStatus.COMPLETED)
+    # Админ видит все задачи (без фильтрации)
 
-    # Фильтр по статусу
+    # Фильтр по статусу (если указан)
     if status_filter:
         query = query.filter(Task.status == status_filter)
 
@@ -102,17 +98,12 @@ def get_task(
         )
 
     # Проверка доступа
-    if current_user.role != "admin":
-        if current_user.role == "client" and task.client_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have access to this task"
-            )
-        if current_user.role == "designer" and task.assigned_designer_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have access to this task"
-            )
+    if current_user.role == "client" and task.client_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this task"
+        )
+    # Дизайнер и админ имеют доступ ко всем задачам
 
     return task
 
@@ -126,8 +117,8 @@ def update_task(
 ):
     """
     Обновление задачи.
-    - Клиент может обновлять только свои задачи (до назначения дизайнера)
-    - Дизайнер может обновлять статус и добавлять комментарии
+    - Клиент может обновлять только свои задачи
+    - Дизайнер может обновлять статус и описание
     - Админ может обновлять всё
     """
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -141,7 +132,7 @@ def update_task(
     # Проверка доступа
     is_admin = current_user.role == "admin"
     is_client = current_user.role == "client" and task.client_id == current_user.id
-    is_designer = current_user.role == "designer" and task.assigned_designer_id == current_user.id
+    is_designer = current_user.role == "designer"
 
     if not (is_admin or is_client or is_designer):
         raise HTTPException(
@@ -151,13 +142,6 @@ def update_task(
 
     # Ограничения для клиента
     if is_client and not is_admin:
-        # Клиент не может менять статус и назначение
-        if task_data.status or task_data.assigned_designer_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Client can only update description and basic fields"
-            )
-        # Клиент может обновлять только описание, целевую аудиторию и стиль
         allowed_fields = ["title", "description", "target_audience", "preferred_style", "references", "deadline"]
         for field in task_data.dict(exclude_unset=True):
             if field not in allowed_fields:
@@ -168,12 +152,13 @@ def update_task(
 
     # Ограничения для дизайнера
     if is_designer and not is_admin:
-        # Дизайнер может менять только статус
-        if any(field not in ["status", "clarified_description"] for field in task_data.dict(exclude_unset=True)):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Designer can only update status and clarified description"
-            )
+        allowed_fields = ["status", "clarified_description"]
+        for field in task_data.dict(exclude_unset=True):
+            if field not in allowed_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Designer can only update: {', '.join(allowed_fields)}"
+                )
 
     # Обновляем поля
     update_data = task_data.dict(exclude_unset=True)
@@ -204,7 +189,6 @@ def delete_task(
             detail="Task not found"
         )
 
-    # Проверка прав
     if current_user.role != "admin" and task.client_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -213,53 +197,6 @@ def delete_task(
 
     db.delete(task)
     db.commit()
-
-
-@router.post("/{task_id}/assign", response_model=TaskOut)
-def assign_task(
-        task_id: int,
-        designer_id: int,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_active_user)
-):
-    """
-    Назначение дизайнера на задачу.
-    Только администратор может назначить дизайнера.
-    """
-    # Проверяем, что пользователь - администратор
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin can assign designers"
-        )
-
-    task = db.query(Task).filter(Task.id == task_id).first()
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found"
-        )
-
-    # Проверяем существование дизайнера
-    designer = db.query(User).filter(
-        User.id == designer_id,
-        User.role == "designer"
-    ).first()
-    if not designer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Designer not found"
-        )
-
-    # Назначаем дизайнера
-    task.assigned_designer_id = designer_id
-    if task.status == TaskStatus.NEW:
-        task.status = TaskStatus.READY_FOR_REVIEW
-
-    db.commit()
-    db.refresh(task)
-
-    return task
 
 
 @router.post("/{task_id}/status", response_model=TaskOut)
@@ -272,7 +209,7 @@ def update_task_status(
     """
     Обновление статуса задачи.
     - Клиент может только закрыть задачу (completed)
-    - Дизайнер может менять статус на любые, кроме completed
+    - Дизайнер может менять статус на любые (кроме completed и rejected)
     - Админ может менять любой статус
     """
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -283,10 +220,9 @@ def update_task_status(
             detail="Task not found"
         )
 
-    # Проверка доступа
     is_admin = current_user.role == "admin"
     is_client = current_user.role == "client" and task.client_id == current_user.id
-    is_designer = current_user.role == "designer" and task.assigned_designer_id == current_user.id
+    is_designer = current_user.role == "designer"
 
     if not (is_admin or is_client or is_designer):
         raise HTTPException(
@@ -309,8 +245,12 @@ def update_task_status(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Designer cannot set status to completed. Only client can."
             )
+        if status == TaskStatus.REJECTED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Designer cannot reject task. Only admin can."
+            )
 
-    # Обновляем статус
     task.status = status
     db.commit()
     db.refresh(task)

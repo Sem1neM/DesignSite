@@ -1,8 +1,9 @@
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 import os
-import uuid
 from datetime import datetime
 from PIL import Image
 import io
@@ -21,7 +22,6 @@ router = APIRouter(prefix="/images", tags=["Images"])
 
 
 def format_file_size(size: int) -> str:
-    """Форматирует размер файла в читаемый вид"""
     if size < 1024:
         return f"{size} B"
     elif size < 1024 * 1024:
@@ -33,9 +33,6 @@ def format_file_size(size: int) -> str:
 
 
 def validate_file(file: UploadFile) -> tuple[str, str, bytes, dict]:
-    """
-    Проверяет файл и возвращает расширение, content-type, данные и размеры
-    """
     content = file.file.read()
     file.file.seek(0)
 
@@ -44,7 +41,7 @@ def validate_file(file: UploadFile) -> tuple[str, str, bytes, dict]:
     if size > settings.MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Файл слишком большой. Максимальный размер: {settings.MAX_FILE_SIZE // (1024 * 1024)} МБ. Текущий: {size // (1024 * 1024)} МБ"
+            detail=f"Файл слишком большой. Максимальный размер: {settings.MAX_FILE_SIZE // (1024 * 1024)} МБ."
         )
 
     ext = os.path.splitext(file.filename)[1].lower()
@@ -55,11 +52,6 @@ def validate_file(file: UploadFile) -> tuple[str, str, bytes, dict]:
         )
 
     content_type = file.content_type or "image/unknown"
-    if content_type not in settings.ALLOWED_MIME_TYPES and "image" not in content_type:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"MIME тип не поддерживается: {content_type}"
-        )
 
     width = None
     height = None
@@ -76,15 +68,10 @@ def validate_file(file: UploadFile) -> tuple[str, str, bytes, dict]:
 @router.post("/upload/{task_id}", response_model=ImageUploadResponse)
 async def upload_image(
         task_id: int,
-        file: UploadFile = File(..., description="Загружаемое изображение (до 50 МБ)"),
+        file: UploadFile = File(...),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Загрузка изображения для задачи (хранится в БД)
-    Максимальный размер: 50 МБ
-    Поддерживаемые форматы: JPG, PNG, GIF, WEBP, SVG, BMP, TIFF
-    """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(
@@ -134,9 +121,6 @@ async def get_task_images(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Получение всех изображений задачи
-    """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(
@@ -144,12 +128,12 @@ async def get_task_images(
             detail="Task not found"
         )
 
-    if current_user.role != "admin" and task.client_id != current_user.id:
-        if current_user.role != "designer" or task.assigned_designer_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have access to this task"
-            )
+    # ТОЛЬКО КЛИЕНТ НЕ ВИДИТ ЧУЖИЕ ИЗОБРАЖЕНИЯ
+    if current_user.role == "client" and task.client_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this task"
+        )
 
     images = db.query(TaskImage).filter(TaskImage.task_id == task_id).order_by(TaskImage.created_at.desc()).all()
 
@@ -170,19 +154,12 @@ async def get_task_images(
     return result
 
 
-from urllib.parse import quote
-
-
 @router.get("/{image_id}")
 async def get_image(
         image_id: int,
-        token: Optional[str] = Query(None, description="JWT токен для авторизации"),
+        token: Optional[str] = Query(None),
         db: Session = Depends(get_db)
 ):
-    """
-    Получение изображения из БД по ID.
-    Поддерживает авторизацию через Bearer токен или query параметр ?token=
-    """
     current_user = None
 
     if token:
@@ -212,14 +189,15 @@ async def get_image(
             detail="Task not found"
         )
 
-    if current_user.role != "admin" and task.client_id != current_user.id:
-        if current_user.role != "designer" or task.assigned_designer_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have access to this image"
-            )
+    # ============================================
+    # ИСПРАВЛЕНИЕ: Дизайнер и админ видят все изображения
+    # ============================================
+    if current_user.role == "client" and task.client_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this image"
+        )
 
-    # Кодируем имя файла для заголовка
     encoded_filename = quote(image.filename)
 
     return Response(
@@ -238,9 +216,6 @@ async def delete_image(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Удаление изображения из БД
-    """
     image = db.query(TaskImage).filter(TaskImage.id == image_id).first()
     if not image:
         raise HTTPException(
