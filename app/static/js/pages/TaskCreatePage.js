@@ -3,12 +3,16 @@ import { store } from '../core/store.js';
 import { router } from '../core/router.js';
 
 export const TaskCreatePage = {
+    uploadedImages: [],
+
     render() {
         const user = store.get('user');
         if (!user || user.role !== 'client') {
             router.navigate('dashboard');
             return;
         }
+
+        this.uploadedImages = [];
 
         const app = document.getElementById('app');
         app.innerHTML = `
@@ -52,8 +56,32 @@ export const TaskCreatePage = {
                             <label>Дедлайн</label>
                             <input type="datetime-local" id="taskDeadline" class="form-control">
                         </div>
-                        <button type="submit" class="btn btn-primary">Создать задачу</button>
-                        <button type="button" class="btn btn-secondary" onclick="window.router.navigate('tasks')">Отмена</button>
+
+                        <!-- Секция загрузки изображений -->
+                        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                                <span style="font-weight: 600; font-size: 0.9rem; color: #4a4a6a;">🖼️ Изображения-референсы</span>
+                                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                    <input type="file" id="imageInput" accept="image/*" multiple style="padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8rem; max-width: 200px;">
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="TaskCreatePage.addImage()">📤 Добавить</button>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #a0aec0; margin-bottom: 12px;">
+                                ⚡ Максимальный размер: 50 МБ на файл. Поддерживаемые форматы: JPG, PNG, GIF, WEBP, SVG, BMP, TIFF
+                            </div>
+                            <div id="taskImagesPreview">
+                                <div class="image-preview-empty">
+                                    <div class="icon">🖼️</div>
+                                    <div class="title">Нет загруженных изображений</div>
+                                    <div class="subtitle">Добавьте референсы для этой задачи</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" class="btn btn-primary" id="submitBtn">Создать задачу</button>
+                            <button type="button" class="btn btn-secondary" onclick="window.router.navigate('tasks')">Отмена</button>
+                        </div>
                     </form>
                     <div id="createError" class="hidden alert-error" style="margin-top:12px;"></div>
                 </div>
@@ -63,7 +91,7 @@ export const TaskCreatePage = {
         document.getElementById('createTaskForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
-            const submitBtn = this.querySelector('button[type="submit"]');
+            const submitBtn = document.getElementById('submitBtn');
             const originalText = submitBtn.textContent;
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<span class="loader-small"></span> Создание...';
@@ -80,6 +108,8 @@ export const TaskCreatePage = {
 
             try {
                 const token = store.get('token');
+
+                // 1. Создаём задачу
                 const response = await fetch('/api/v1/tasks', {
                     method: 'POST',
                     headers: {
@@ -98,7 +128,42 @@ export const TaskCreatePage = {
 
                 if (response.ok) {
                     const task = await response.json();
-                    if (window.showAlert) window.showAlert('✅ Задача #' + task.id + ' "' + task.title + '" создана!', 'success');
+
+                    // 2. Загружаем изображения
+                    if (TaskCreatePage.uploadedImages && TaskCreatePage.uploadedImages.length > 0) {
+                        let uploaded = 0;
+                        let failed = 0;
+
+                        for (let i = 0; i < TaskCreatePage.uploadedImages.length; i++) {
+                            try {
+                                const formData = new FormData();
+                                formData.append('file', TaskCreatePage.uploadedImages[i]);
+
+                                const uploadResponse = await fetch('/api/v1/images/upload/' + task.id, {
+                                    method: 'POST',
+                                    headers: { 'Authorization': 'Bearer ' + token },
+                                    body: formData
+                                });
+
+                                if (uploadResponse.ok) {
+                                    uploaded++;
+                                } else {
+                                    failed++;
+                                }
+                            } catch (e) {
+                                failed++;
+                            }
+                        }
+
+                        if (failed > 0) {
+                            window.showAlert('✅ Задача #' + task.id + ' создана! Загружено ' + uploaded + ' из ' + TaskCreatePage.uploadedImages.length + ' изображений.', 'success');
+                        } else {
+                            window.showAlert('✅ Задача #' + task.id + ' создана! Загружено ' + uploaded + ' изображений.', 'success');
+                        }
+                    } else {
+                        window.showAlert('✅ Задача #' + task.id + ' "' + task.title + '" создана!', 'success');
+                    }
+
                     submitBtn.disabled = false;
                     submitBtn.textContent = originalText;
                     setTimeout(function() { window.router.navigate('task-detail', { id: task.id }); }, 1000);
@@ -116,5 +181,87 @@ export const TaskCreatePage = {
                 submitBtn.textContent = originalText;
             }
         });
+    },
+
+    addImage() {
+        const input = document.getElementById('imageInput');
+        if (!input || !input.files || input.files.length === 0) {
+            if (window.showAlert) window.showAlert('❌ Выберите файлы для загрузки', 'error');
+            return;
+        }
+
+        const files = Array.from(input.files);
+        const validFiles = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+
+            // Проверка размера (50 МБ)
+            if (file.size > 50 * 1024 * 1024) {
+                if (window.showAlert) window.showAlert('❌ Файл "' + file.name + '" слишком большой. Максимум: 50 МБ', 'error');
+                continue;
+            }
+
+            // Проверка типа
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff'];
+            if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
+                if (window.showAlert) window.showAlert('❌ Файл "' + file.name + '" имеет неподдерживаемый формат.', 'error');
+                continue;
+            }
+
+            validFiles.push(file);
+        }
+
+        if (validFiles.length === 0) return;
+
+        this.uploadedImages = this.uploadedImages.concat(validFiles);
+        this.updatePreview();
+        if (window.showAlert) window.showAlert('✅ Добавлено ' + validFiles.length + ' изображений. Всего: ' + this.uploadedImages.length, 'success');
+        input.value = '';
+    },
+
+    removeImage(index) {
+        this.uploadedImages.splice(index, 1);
+        this.updatePreview();
+        if (this.uploadedImages.length === 0) {
+            if (window.showAlert) window.showAlert('📭 Все изображения удалены', 'info');
+        }
+    },
+
+    updatePreview() {
+        const container = document.getElementById('taskImagesPreview');
+        if (!container) return;
+
+        if (!this.uploadedImages || this.uploadedImages.length === 0) {
+            container.innerHTML = `
+                <div class="image-preview-empty">
+                    <div class="icon">🖼️</div>
+                    <div class="title">Нет загруженных изображений</div>
+                    <div class="subtitle">Добавьте референсы для этой задачи</div>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="image-preview-grid">';
+        for (let i = 0; i < this.uploadedImages.length; i++) {
+            const file = this.uploadedImages[i];
+            html += `
+                <div class="image-preview-item">
+                    <img src="${URL.createObjectURL(file)}" alt="${file.name}">
+                    <button type="button" class="remove-btn" onclick="TaskCreatePage.removeImage(${i})">✕</button>
+                    <div class="file-info">
+                        <div class="name" title="${file.name}">${file.name}</div>
+                        <div class="size">${(file.size / 1024).toFixed(1)} KB</div>
+                    </div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        html += '<div style="margin-top: 8px; font-size: 0.7rem; color: #a0aec0; text-align: center;">Всего изображений: ' + this.uploadedImages.length + '</div>';
+        container.innerHTML = html;
     }
 };
+
+// Делаем методы глобальными для onclick
+window.TaskCreatePage = TaskCreatePage;
