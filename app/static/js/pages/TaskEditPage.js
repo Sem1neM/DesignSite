@@ -1,10 +1,10 @@
-// pages/TaskEditPage.js - Упрощённая версия без this
+// pages/TaskEditPage.js
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
+import { Navbar } from '../components/Navbar.js';
 
 let editTaskId = null;
 let editUploadedImages = [];
-let editExistingImages = [];
 
 export const TaskEditPage = {
     render(params) {
@@ -16,18 +16,10 @@ export const TaskEditPage = {
 
         editTaskId = params.id;
         editUploadedImages = [];
-        editExistingImages = [];
 
         const app = document.getElementById('app');
         app.innerHTML = `
-            <nav class="navbar">
-                <span class="navbar-brand" style="cursor:pointer;" onclick="window.router.navigate('dashboard')">🎨 Design Task Manager</span>
-                <div class="navbar-menu">
-                    <span class="user-info">${user.full_name}</span>
-                    <span class="role-badge">${user.role}</span>
-                    <button class="btn btn-secondary btn-sm" onclick="window.logout()">Выйти</button>
-                </div>
-            </nav>
+            ${Navbar.render()}
             <div class="container" style="max-width: 700px;">
                 <div id="alertContainer"></div>
                 <div id="editForm">
@@ -42,10 +34,6 @@ export const TaskEditPage = {
         loadEditTask();
     }
 };
-
-// ============================================
-// ГЛОБАЛЬНЫЕ ФУНКЦИИ
-// ============================================
 
 async function loadEditTask() {
     try {
@@ -74,23 +62,23 @@ async function loadEditTask() {
             headers: { 'Authorization': 'Bearer ' + token }
         });
 
-        editExistingImages = [];
+        let existingImages = [];
         if (imagesResponse.ok) {
-            editExistingImages = await imagesResponse.json();
+            existingImages = await imagesResponse.json();
         }
 
         let imagesHtml = '';
-        if (editExistingImages.length > 0) {
+        if (existingImages.length > 0) {
             imagesHtml = `
                 <div style="margin-bottom: 12px;">
                     <div style="font-weight: 600; font-size: 0.85rem; color: #4a4a6a; margin-bottom: 8px;">Существующие изображения:</div>
                     <div class="image-grid">
-                        ${editExistingImages.map(img => `
+                        ${existingImages.map(img => `
                             <div class="image-card">
                                 <img src="/api/v1/images/${img.id}?token=${encodeURIComponent(token)}" alt="${img.filename}"
                                      onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}', '_blank')"
                                      onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23f0f2f5%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23a0aec0%22 font-family=%22Arial%22 font-size=%2214%22%3EОшибка%3C/text%3E%3C/svg%3E'">
-                                <button class="delete-btn" onclick="deleteEditImage(${img.id})">✕</button>
+                                <button class="delete-btn" onclick="deleteExistingImage(${img.id})">✕</button>
                                 <div class="image-info">
                                     <div class="filename" title="${img.filename}">${img.filename}</div>
                                     <div class="meta">
@@ -120,20 +108,12 @@ async function loadEditTask() {
                         <textarea id="editDescription" class="form-control" rows="4">${task.description || ''}</textarea>
                     </div>
                     <div class="form-group">
-                        <label>Целевая аудитория</label>
-                        <input type="text" id="editAudience" class="form-control" value="${task.target_audience || ''}">
-                    </div>
-                    <div class="form-group">
                         <label>Предпочтительный стиль</label>
                         <input type="text" id="editStyle" class="form-control" value="${task.preferred_style || ''}">
                     </div>
                     <div class="form-group">
                         <label>Референсы (ссылки через запятую)</label>
                         <input type="text" id="editReferences" class="form-control" value="${(task.references || []).join(', ')}">
-                    </div>
-                    <div class="form-group">
-                        <label>Дедлайн</label>
-                        <input type="datetime-local" id="editDeadline" class="form-control" value="${task.deadline ? new Date(task.deadline).toISOString().slice(0, 16) : ''}">
                     </div>
 
                     <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
@@ -145,19 +125,22 @@ async function loadEditTask() {
                             </div>
                         </div>
                         <div style="font-size: 0.8rem; color: #a0aec0; margin-bottom: 12px;">
-                            ⚡ Максимальный размер: 50 МБ на файл
+                            ⚡ Максимальный размер: 50 МБ на файл. Поддерживаемые форматы: JPG, PNG, GIF, WEBP, SVG, BMP, TIFF
                         </div>
+
                         ${imagesHtml}
+
                         <div id="editImagePreview">
                             <div class="image-preview-empty">
                                 <div class="icon">🖼️</div>
                                 <div class="title">Нет новых изображений</div>
+                                <div class="subtitle">Добавьте новые референсы для этой задачи</div>
                             </div>
                         </div>
                     </div>
 
                     <div style="display: flex; gap: 10px; margin-top: 20px;">
-                        <button type="submit" class="btn btn-primary" id="editSubmitBtn">Сохранить</button>
+                        <button type="submit" class="btn btn-primary" id="editSubmitBtn">Сохранить изменения</button>
                         <button type="button" class="btn btn-secondary" onclick="window.router.navigate('task-detail', {id: ${task.id}})">Отмена</button>
                     </div>
                 </form>
@@ -168,9 +151,10 @@ async function loadEditTask() {
         document.getElementById('editTaskForm').addEventListener('submit', handleEditSubmit);
 
     } catch (error) {
+        console.error('❌ Fetch error:', error);
         document.getElementById('editForm').innerHTML = `
             <div class="card">
-                <div class="alert alert-error">❌ Ошибка: ${error.message}</div>
+                <div class="alert alert-error">❌ Ошибка загрузки: ${error.message}</div>
                 <button class="btn btn-secondary" onclick="window.router.navigate('tasks')">← Назад</button>
             </div>
         `;
@@ -187,10 +171,8 @@ async function handleEditSubmit(e) {
 
     const title = document.getElementById('editTitle').value;
     const description = document.getElementById('editDescription').value;
-    const target_audience = document.getElementById('editAudience').value;
     const preferred_style = document.getElementById('editStyle').value;
     const refs = document.getElementById('editReferences').value;
-    const deadline = document.getElementById('editDeadline').value;
     const errorDiv = document.getElementById('editError');
 
     const references = refs.split(',').map(function(r) { return r.trim(); }).filter(function(r) { return r; });
@@ -207,10 +189,8 @@ async function handleEditSubmit(e) {
             body: JSON.stringify({
                 title: title,
                 description: description,
-                target_audience: target_audience,
                 preferred_style: preferred_style,
-                references: references,
-                deadline: deadline ? new Date(deadline).toISOString() : null
+                references: references
             })
         });
 
@@ -241,9 +221,9 @@ async function handleEditSubmit(e) {
                 }
 
                 if (failed > 0) {
-                    window.showAlert('✅ Обновлено! Загружено ' + uploaded + ' из ' + editUploadedImages.length + ' изображений.', 'success');
+                    window.showAlert('✅ Задача обновлена! Загружено ' + uploaded + ' из ' + editUploadedImages.length + ' изображений.', 'success');
                 } else {
-                    window.showAlert('✅ Обновлено! Загружено ' + uploaded + ' изображений.', 'success');
+                    window.showAlert('✅ Задача обновлена! Загружено ' + uploaded + ' изображений.', 'success');
                 }
             } else {
                 window.showAlert('✅ Задача обновлена!', 'success');
@@ -254,7 +234,7 @@ async function handleEditSubmit(e) {
             setTimeout(function() { window.router.navigate('task-detail', { id: editTaskId }); }, 1000);
         } else {
             const err = await response.json();
-            errorDiv.textContent = '❌ ' + (err.detail || 'Ошибка');
+            errorDiv.textContent = '❌ ' + (err.detail || 'Ошибка обновления');
             errorDiv.classList.remove('hidden');
             submitBtn.disabled = false;
             submitBtn.textContent = originalText;
@@ -270,7 +250,7 @@ async function handleEditSubmit(e) {
 function addEditImage() {
     const input = document.getElementById('editImageInput');
     if (!input || !input.files || input.files.length === 0) {
-        window.showAlert('❌ Выберите файлы', 'error');
+        window.showAlert('❌ Выберите файлы для загрузки', 'error');
         return;
     }
 
@@ -280,7 +260,12 @@ function addEditImage() {
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (file.size > 50 * 1024 * 1024) {
-            window.showAlert('❌ Файл "' + file.name + '" слишком большой', 'error');
+            window.showAlert('❌ Файл "' + file.name + '" слишком большой. Максимум: 50 МБ', 'error');
+            continue;
+        }
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff'];
+        if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
+            window.showAlert('❌ Файл "' + file.name + '" имеет неподдерживаемый формат.', 'error');
             continue;
         }
         validFiles.push(file);
@@ -290,13 +275,16 @@ function addEditImage() {
 
     editUploadedImages = editUploadedImages.concat(validFiles);
     updateEditPreview();
-    window.showAlert('✅ Добавлено ' + validFiles.length + ' изображений', 'success');
+    window.showAlert('✅ Добавлено ' + validFiles.length + ' изображений. Всего новых: ' + editUploadedImages.length, 'success');
     input.value = '';
 }
 
 function removeEditImage(index) {
     editUploadedImages.splice(index, 1);
     updateEditPreview();
+    if (editUploadedImages.length === 0) {
+        window.showAlert('📭 Все новые изображения удалены', 'info');
+    }
 }
 
 function updateEditPreview() {
@@ -308,12 +296,17 @@ function updateEditPreview() {
             <div class="image-preview-empty">
                 <div class="icon">🖼️</div>
                 <div class="title">Нет новых изображений</div>
+                <div class="subtitle">Добавьте новые референсы для этой задачи</div>
             </div>
         `;
         return;
     }
 
-    let html = '<div class="image-preview-grid">';
+    let html = `
+        <div style="margin-top: 8px;">
+            <div style="font-weight: 600; font-size: 0.85rem; color: #4a4a6a; margin-bottom: 8px;">Новые изображения (будут загружены при сохранении):</div>
+            <div class="image-preview-grid">
+    `;
     for (let i = 0; i < editUploadedImages.length; i++) {
         const file = editUploadedImages[i];
         html += `
@@ -321,18 +314,24 @@ function updateEditPreview() {
                 <img src="${URL.createObjectURL(file)}" alt="${file.name}">
                 <button type="button" class="remove-btn" onclick="removeEditImage(${i})">✕</button>
                 <div class="file-info">
-                    <div class="name">${file.name}</div>
+                    <div class="name" title="${file.name}">${file.name}</div>
                     <div class="size">${(file.size / 1024).toFixed(1)} KB</div>
                 </div>
             </div>
         `;
     }
-    html += '</div>';
+    html += `
+            </div>
+            <div style="margin-top: 8px; font-size: 0.7rem; color: #a0aec0; text-align: center;">
+                Всего новых изображений: ${editUploadedImages.length}
+            </div>
+        </div>
+    `;
     container.innerHTML = html;
 }
 
-async function deleteEditImage(imageId) {
-    if (!confirm('Удалить изображение?')) return;
+async function deleteExistingImage(imageId) {
+    if (!confirm('Удалить это изображение?')) return;
     try {
         const token = store.get('token');
         const response = await fetch('/api/v1/images/' + imageId, {
@@ -342,9 +341,12 @@ async function deleteEditImage(imageId) {
         if (response.ok) {
             window.showAlert('✅ Изображение удалено', 'success');
             await loadEditTask();
+        } else {
+            const err = await response.json();
+            window.showAlert('❌ ' + (err.detail || 'Ошибка удаления'), 'error');
         }
     } catch (e) {
-        window.showAlert('❌ Ошибка', 'error');
+        window.showAlert('❌ Ошибка соединения', 'error');
     }
 }
 
@@ -357,8 +359,4 @@ function formatFileSize(size) {
 
 window.addEditImage = addEditImage;
 window.removeEditImage = removeEditImage;
-window.deleteEditImage = deleteEditImage;
-window.logout = function() {
-    store.clear();
-    window.router.navigate('login');
-};
+window.deleteExistingImage = deleteExistingImage;

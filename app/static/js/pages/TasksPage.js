@@ -1,6 +1,7 @@
 // pages/TasksPage.js
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
+import { Navbar } from '../components/Navbar.js';
 
 const STATUS_RUSSIAN = {
     'new': 'Новая',
@@ -21,14 +22,7 @@ export const TasksPage = {
 
         const app = document.getElementById('app');
         app.innerHTML = `
-            <nav class="navbar">
-                <span class="navbar-brand" style="cursor:pointer;" onclick="window.router.navigate('dashboard')">🎨 Design Task Manager</span>
-                <div class="navbar-menu">
-                    <span class="user-info">${user.full_name}</span>
-                    <span class="role-badge">${user.role}</span>
-                    <button class="btn btn-secondary btn-sm" onclick="window.logout()">Выйти</button>
-                </div>
-            </nav>
+            ${Navbar.render()}
             <div class="container">
                 <div id="alertContainer"></div>
                 <div class="card">
@@ -42,7 +36,7 @@ export const TasksPage = {
                     <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <label style="font-weight: 500; font-size: 0.9rem; color: #4a4a6a;">Сортировать:</label>
-                            <select id="sortStatus" class="form-control" style="width: auto; padding: 6px 12px; font-size: 0.9rem;" onchange="applySort()">
+                            <select id="sortStatus" class="form-control" style="width: auto; padding: 6px 12px; font-size: 0.9rem;" onchange="window.applySort()">
                                 <option value="all">Все статусы</option>
                                 <option value="new">Новые</option>
                                 <option value="clarification">Уточнение</option>
@@ -54,7 +48,7 @@ export const TasksPage = {
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <label style="font-weight: 500; font-size: 0.9rem; color: #4a4a6a;">По дате:</label>
-                            <select id="sortDate" class="form-control" style="width: auto; padding: 6px 12px; font-size: 0.9rem;" onchange="applySort()">
+                            <select id="sortDate" class="form-control" style="width: auto; padding: 6px 12px; font-size: 0.9rem;" onchange="window.applySort()">
                                 <option value="newest">Сначала новые</option>
                                 <option value="oldest">Сначала старые</option>
                             </select>
@@ -74,9 +68,6 @@ export const TasksPage = {
     }
 };
 
-// ============================================
-// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ СОРТИРОВКИ
-// ============================================
 let allTasks = [];
 
 async function loadTasksList() {
@@ -98,7 +89,6 @@ async function loadTasksList() {
 
         let tasks = await response.json();
 
-        // Фильтруем задачи
         if (user.role === 'client') {
             tasks = tasks.filter(task => task.client_id === user.id);
         } else if (user.role === 'designer') {
@@ -106,7 +96,7 @@ async function loadTasksList() {
         }
 
         allTasks = tasks;
-        renderTasks();
+        renderTasks(user);
 
     } catch (error) {
         console.error('❌ Error:', error);
@@ -114,21 +104,18 @@ async function loadTasksList() {
     }
 }
 
-function renderTasks() {
-    const user = store.get('user');
+function renderTasks(user) {
     const container = document.getElementById('taskList');
+    if (!container) return;
 
-    // Получаем значения сортировки
     const sortStatus = document.getElementById('sortStatus')?.value || 'all';
     const sortDate = document.getElementById('sortDate')?.value || 'newest';
 
-    // Фильтруем по статусу
     let filteredTasks = allTasks;
     if (sortStatus !== 'all') {
         filteredTasks = filteredTasks.filter(task => task.status.toLowerCase() === sortStatus);
     }
 
-    // Сортируем по дате
     filteredTasks = filteredTasks.sort((a, b) => {
         const dateA = new Date(a.created_at);
         const dateB = new Date(b.created_at);
@@ -162,7 +149,7 @@ function renderTasks() {
                         <span>🆔 #${task.id}</span>
                         <span>📅 ${new Date(task.created_at).toLocaleDateString()}</span>
                         ${task.deadline ? '<span>⏰ ' + new Date(task.deadline).toLocaleDateString() + '</span>' : ''}
-                        ${user.role !== 'client' ? '<span>👤 Клиент: #' + task.client_id + '</span>' : ''}
+                        ${user && user.role !== 'client' ? '<span>👤 Клиент: #' + task.client_id + '</span>' : ''}
                     </div>
                 </div>
                 <div><span class="status-badge status-${task.status}">${statusText}</span></div>
@@ -175,11 +162,9 @@ function renderTasks() {
     container.innerHTML = html;
 }
 
-// ============================================
-// ГЛОБАЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРИМЕНЕНИЯ СОРТИРОВКИ
-// ============================================
 window.applySort = function() {
-    renderTasks();
+    const user = store.get('user');
+    renderTasks(user);
 };
 
 window.logout = function() {

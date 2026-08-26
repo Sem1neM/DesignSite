@@ -1,6 +1,7 @@
 // pages/DashboardPage.js
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
+import { Navbar } from '../components/Navbar.js';
 
 export const DashboardPage = {
     render() {
@@ -12,14 +13,7 @@ export const DashboardPage = {
 
         const app = document.getElementById('app');
         app.innerHTML = `
-            <nav class="navbar">
-                <span class="navbar-brand" style="cursor:pointer;" onclick="window.router.navigate('dashboard')">🎨 Design Task Manager</span>
-                <div class="navbar-menu">
-                    <span class="user-info">${user.full_name}</span>
-                    <span class="role-badge">${user.role}</span>
-                    <button class="btn btn-secondary btn-sm" onclick="window.logout()">Выйти</button>
-                </div>
-            </nav>
+            ${Navbar.render()}
             <div class="container">
                 <div id="alertContainer"></div>
                 <div class="row" style="margin-bottom: 24px;">
@@ -66,7 +60,6 @@ async function loadDashboardStats() {
 
         let tasks = await response.json();
 
-        // Фильтруем задачи
         if (user.role === 'client') {
             tasks = tasks.filter(task => task.client_id === user.id);
         } else if (user.role === 'designer') {

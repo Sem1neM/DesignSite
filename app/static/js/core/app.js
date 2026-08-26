@@ -67,7 +67,7 @@ router.register('dashboard', {
 });
 
 router.register('tasks', {
-    title: 'Мои задачи',
+    title: 'Задачи',
     render: TasksPage.render,
     requiresAuth: true
 });
@@ -107,6 +107,17 @@ async function initApp() {
                 const user = await response.json();
                 store.setUser(user);
                 console.log('👤 User authenticated:', user.email);
+
+                // Загружаем уведомления после авторизации
+                setTimeout(() => {
+                    if (window.loadNotifications) {
+                        console.log('🔔 Загружаем уведомления...');
+                        window.loadNotifications();
+                    } else {
+                        console.log('⚠️ window.loadNotifications не найдена');
+                    }
+                }, 500);
+
                 router.navigate('dashboard');
                 return;
             } else {

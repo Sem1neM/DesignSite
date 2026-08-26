@@ -7,6 +7,11 @@ from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate, TaskOut, TaskListOut
 from app.api.v1.dependencies import get_current_user, get_current_active_user
+from app.services.notification_service import (
+    notify_task_created,
+    notify_task_updated,
+    notify_task_status_changed
+)
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -42,6 +47,9 @@ def create_task(
     db.commit()
     db.refresh(new_task)
 
+    # Уведомление о создании задачи
+    notify_task_created(db, new_task, current_user)
+
     return new_task
 
 
@@ -63,18 +71,14 @@ def list_tasks(
 
     # Фильтр по роли
     if current_user.role == "client":
-        # Клиент видит только свои задачи
         query = query.filter(Task.client_id == current_user.id)
     elif current_user.role == "designer":
-        # Дизайнер видит все задачи, кроме завершённых
         query = query.filter(Task.status != TaskStatus.COMPLETED)
     # Админ видит все задачи (без фильтрации)
 
-    # Фильтр по статусу (если указан)
     if status_filter:
         query = query.filter(Task.status == status_filter)
 
-    # Сортировка и пагинация
     tasks = query.order_by(Task.created_at.desc()).offset(skip).limit(limit).all()
 
     return tasks
@@ -97,13 +101,11 @@ def get_task(
             detail="Task not found"
         )
 
-    # Проверка доступа
     if current_user.role == "client" and task.client_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this task"
         )
-    # Дизайнер и админ имеют доступ ко всем задачам
 
     return task
 
@@ -129,7 +131,6 @@ def update_task(
             detail="Task not found"
         )
 
-    # Проверка доступа
     is_admin = current_user.role == "admin"
     is_client = current_user.role == "client" and task.client_id == current_user.id
     is_designer = current_user.role == "designer"
@@ -140,7 +141,6 @@ def update_task(
             detail="You don't have permission to update this task"
         )
 
-    # Ограничения для клиента
     if is_client and not is_admin:
         allowed_fields = ["title", "description", "target_audience", "preferred_style", "references", "deadline"]
         for field in task_data.dict(exclude_unset=True):
@@ -150,7 +150,6 @@ def update_task(
                     detail=f"Client cannot update field: {field}"
                 )
 
-    # Ограничения для дизайнера
     if is_designer and not is_admin:
         allowed_fields = ["status", "clarified_description"]
         for field in task_data.dict(exclude_unset=True):
@@ -160,13 +159,17 @@ def update_task(
                     detail=f"Designer can only update: {', '.join(allowed_fields)}"
                 )
 
-    # Обновляем поля
+    # Проверяем, были ли изменения
     update_data = task_data.dict(exclude_unset=True)
+    has_changes = bool(update_data)
+
     for field, value in update_data.items():
         setattr(task, field, value)
 
-    db.commit()
-    db.refresh(task)
+    if has_changes:
+        db.commit()
+        db.refresh(task)
+        notify_task_updated(db, task, current_user)
 
     return task
 
@@ -230,7 +233,6 @@ def update_task_status(
             detail="You don't have permission to update this task status"
         )
 
-    # Ограничения для клиента
     if is_client and not is_admin:
         if status != TaskStatus.COMPLETED:
             raise HTTPException(
@@ -238,7 +240,6 @@ def update_task_status(
                 detail="Client can only set status to completed"
             )
 
-    # Ограничения для дизайнера
     if is_designer and not is_admin:
         if status == TaskStatus.COMPLETED:
             raise HTTPException(
@@ -251,8 +252,12 @@ def update_task_status(
                 detail="Designer cannot reject task. Only admin can."
             )
 
+    old_status = task.status
     task.status = status
     db.commit()
     db.refresh(task)
+
+    # Уведомление об изменении статуса
+    notify_task_status_changed(db, task, old_status.value, status.value, current_user)
 
     return task

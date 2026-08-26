@@ -1,18 +1,7 @@
 // pages/TaskDetailPage.js
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
-
-// ============================================
-// СТАТУСЫ НА РУССКОМ
-// ============================================
-const STATUS_RUSSIAN = {
-    'new': 'Новая',
-    'clarification': 'Уточнение',
-    'ready_for_review': 'Готово к проверке',
-    'in_progress': 'В работе',
-    'completed': 'Завершено',
-    'rejected': 'Отклонено'
-};
+import { Navbar } from '../components/Navbar.js';
 
 export const TaskDetailPage = {
     render(params) {
@@ -25,14 +14,7 @@ export const TaskDetailPage = {
         const taskId = params.id;
         const app = document.getElementById('app');
         app.innerHTML = `
-            <nav class="navbar">
-                <span class="navbar-brand" style="cursor:pointer;" onclick="window.router.navigate('dashboard')">🎨 Design Task Manager</span>
-                <div class="navbar-menu">
-                    <span class="user-info">${user.full_name}</span>
-                    <span class="role-badge">${user.role}</span>
-                    <button class="btn btn-secondary btn-sm" onclick="window.logout()">Выйти</button>
-                </div>
-            </nav>
+            ${Navbar.render()}
             <div class="container">
                 <div id="alertContainer"></div>
                 <div id="taskDetail">
@@ -82,18 +64,19 @@ async function loadTaskDetail(taskId, user) {
 
         const container = document.getElementById('taskDetail');
 
-        // ============================================
-        // СТАТУС НА РУССКОМ
-        // ============================================
-        const statusLabel = STATUS_RUSSIAN[task.status.toLowerCase()] || task.status;
+        let statusLabel = '';
+        if (task.status === 'NEW') statusLabel = '🆕 Новая';
+        else if (task.status === 'CLARIFICATION') statusLabel = '💬 Уточнение';
+        else if (task.status === 'READY_FOR_REVIEW') statusLabel = '✅ Готово к проверке';
+        else if (task.status === 'IN_PROGRESS') statusLabel = '🔄 В работе';
+        else if (task.status === 'COMPLETED') statusLabel = '✔️ Завершено';
+        else if (task.status === 'REJECTED') statusLabel = '❌ Отклонено';
+        else statusLabel = task.status;
 
         const isClient = user.role === 'client' && task.client_id === user.id;
         const isDesigner = user.role === 'designer';
         const isAdmin = user.role === 'admin';
 
-        // ============================================
-        // ИЗОБРАЖЕНИЯ
-        // ============================================
         let imagesHtml = '';
         if (images.length > 0) {
             imagesHtml = `
@@ -120,25 +103,31 @@ async function loadTaskDetail(taskId, user) {
             `;
         }
 
-        // ============================================
-        // НАСТРОЙКА СТАТУСОВ ДЛЯ ВЫПАДАЮЩЕГО СПИСКА
-        // ============================================
         let canChangeStatus = false;
         let statusOptions = '';
+
+        const statusList = {
+            'new': '🆕 Новая',
+            'clarification': '💬 Уточнение',
+            'ready_for_review': '✅ Готово к проверке',
+            'in_progress': '🔄 В работе',
+            'completed': '✔️ Завершено',
+            'rejected': '❌ Отклонено'
+        };
 
         const currentStatus = task.status.toLowerCase();
 
         if (isAdmin) {
             canChangeStatus = true;
             statusOptions = '';
-            for (const [key, label] of Object.entries(STATUS_RUSSIAN)) {
+            for (const [key, label] of Object.entries(statusList)) {
                 statusOptions += `<option value="${key}" ${currentStatus === key ? 'selected' : ''}>${label}</option>`;
             }
         } else if (isDesigner) {
             canChangeStatus = true;
             const designerStatuses = ['new', 'clarification', 'ready_for_review', 'in_progress'];
             for (const key of designerStatuses) {
-                statusOptions += `<option value="${key}" ${currentStatus === key ? 'selected' : ''}>${STATUS_RUSSIAN[key]}</option>`;
+                statusOptions += `<option value="${key}" ${currentStatus === key ? 'selected' : ''}>${statusList[key]}</option>`;
             }
         } else if (isClient && task.status !== 'COMPLETED') {
             canChangeStatus = true;
@@ -165,8 +154,6 @@ async function loadTaskDetail(taskId, user) {
                         <div class="field-label">📝 Описание</div>
                         <div class="field-value">${task.description || '—'}</div>
                         ${task.clarified_description ? '<div class="field-label">🤖 Уточнённое ТЗ (ИИ)</div><div class="field-value" style="background: #f7fafc; padding: 12px; border-radius: 8px;">' + task.clarified_description + '</div>' : ''}
-                        <div class="field-label">🎯 Целевая аудитория</div>
-                        <div class="field-value">${task.target_audience || '—'}</div>
                         <div class="field-label">🎨 Предпочтительный стиль</div>
                         <div class="field-value">${task.preferred_style || '—'}</div>
                         ${task.references && task.references.length > 0 ? '<div class="field-label">🔗 Референсы (ссылки)</div><div class="field-value">' + task.references.map(function(ref) { return '<a href="' + ref + '" target="_blank" style="color: #667eea; display: block;">' + ref + '</a>'; }).join('') + '</div>' : ''}
@@ -183,7 +170,6 @@ async function loadTaskDetail(taskId, user) {
                         <div class="field-value">${new Date(task.created_at).toLocaleString()}</div>
                         <div class="field-label">🔄 Обновлена</div>
                         <div class="field-value">${new Date(task.updated_at).toLocaleString()}</div>
-                        ${task.deadline ? '<div class="field-label">⏰ Дедлайн</div><div class="field-value">' + new Date(task.deadline).toLocaleString() + '</div>' : ''}
 
                         ${canChangeStatus ? `
                             <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
@@ -215,10 +201,6 @@ async function loadTaskDetail(taskId, user) {
     }
 }
 
-// ============================================
-// ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЯ СТАТУСА
-// ============================================
-
 window.updateTaskStatus = async function(taskId) {
     const statusSelect = document.getElementById('statusSelect');
     if (!statusSelect) {
@@ -228,7 +210,6 @@ window.updateTaskStatus = async function(taskId) {
 
     const statusValue = statusSelect.value;
     const statusLower = statusValue.toLowerCase();
-    console.log('🔄 Updating status to:', statusLower);
 
     try {
         const token = store.get('token');
@@ -240,11 +221,7 @@ window.updateTaskStatus = async function(taskId) {
             }
         });
 
-        console.log('📡 Response status:', response.status);
-
         if (response.ok) {
-            const result = await response.json();
-            console.log('✅ Status updated:', result);
             window.showAlert('✅ Статус обновлён!', 'success');
             setTimeout(function() {
                 const user = store.get('user');
@@ -256,18 +233,12 @@ window.updateTaskStatus = async function(taskId) {
                 const error = await response.json();
                 errorMessage = error.detail || errorMessage;
             } catch (e) {}
-            console.error('❌ Error:', errorMessage);
             window.showAlert('❌ ' + errorMessage, 'error');
         }
     } catch (e) {
-        console.error('❌ Network error:', e);
         window.showAlert('❌ Ошибка соединения: ' + e.message, 'error');
     }
 };
-
-// ============================================
-// ФУНКЦИЯ ДЛЯ ЗАГРУЗКИ ИЗОБРАЖЕНИЙ
-// ============================================
 
 window.uploadImageToTask = async function(taskId) {
     const input = document.getElementById('imageInput');
@@ -314,10 +285,6 @@ window.uploadImageToTask = async function(taskId) {
         window.showAlert('❌ Ошибка соединения', 'error');
     }
 };
-
-// ============================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ============================================
 
 function formatFileSize(size) {
     if (size < 1024) return size + ' B';

@@ -1,6 +1,7 @@
 // pages/TaskCreatePage.js
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
+import { Navbar } from '../components/Navbar.js';
 
 export const TaskCreatePage = {
     uploadedImages: [],
@@ -16,14 +17,7 @@ export const TaskCreatePage = {
 
         const app = document.getElementById('app');
         app.innerHTML = `
-            <nav class="navbar">
-                <span class="navbar-brand" style="cursor:pointer;" onclick="window.router.navigate('dashboard')">🎨 Design Task Manager</span>
-                <div class="navbar-menu">
-                    <span class="user-info">${user.full_name}</span>
-                    <span class="role-badge">${user.role}</span>
-                    <button class="btn btn-secondary btn-sm" onclick="window.logout()">Выйти</button>
-                </div>
-            </nav>
+            ${Navbar.render()}
             <div class="container" style="max-width: 700px;">
                 <div id="alertContainer"></div>
                 <div class="card">
@@ -41,10 +35,6 @@ export const TaskCreatePage = {
                             <textarea id="taskDescription" class="form-control" placeholder="Опишите задачу подробнее"></textarea>
                         </div>
                         <div class="form-group">
-                            <label>Целевая аудитория</label>
-                            <input type="text" id="taskAudience" class="form-control" placeholder="Например: Молодые люди 18-35 лет">
-                        </div>
-                        <div class="form-group">
                             <label>Предпочтительный стиль</label>
                             <input type="text" id="taskStyle" class="form-control" placeholder="Например: Яркий, минималистичный">
                         </div>
@@ -52,18 +42,13 @@ export const TaskCreatePage = {
                             <label>Референсы (ссылки через запятую)</label>
                             <input type="text" id="taskReferences" class="form-control" placeholder="https://example.com, https://example2.com">
                         </div>
-                        <div class="form-group">
-                            <label>Дедлайн</label>
-                            <input type="datetime-local" id="taskDeadline" class="form-control">
-                        </div>
 
-                        <!-- Секция загрузки изображений -->
                         <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                                 <span style="font-weight: 600; font-size: 0.9rem; color: #4a4a6a;">🖼️ Изображения-референсы</span>
                                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                                     <input type="file" id="imageInput" accept="image/*" multiple style="padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8rem; max-width: 200px;">
-                                    <button type="button" class="btn btn-primary btn-sm" onclick="TaskCreatePage.addImage()">📤 Добавить</button>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="addImageToTask()">📤 Добавить</button>
                                 </div>
                             </div>
                             <div style="font-size: 0.8rem; color: #a0aec0; margin-bottom: 12px;">
@@ -98,10 +83,8 @@ export const TaskCreatePage = {
 
             const title = document.getElementById('taskTitle').value;
             const description = document.getElementById('taskDescription').value;
-            const target_audience = document.getElementById('taskAudience').value;
             const preferred_style = document.getElementById('taskStyle').value;
             const refs = document.getElementById('taskReferences').value;
-            const deadline = document.getElementById('taskDeadline').value;
             const errorDiv = document.getElementById('createError');
 
             const references = refs.split(',').map(function(r) { return r.trim(); }).filter(function(r) { return r; });
@@ -109,7 +92,6 @@ export const TaskCreatePage = {
             try {
                 const token = store.get('token');
 
-                // 1. Создаём задачу
                 const response = await fetch('/api/v1/tasks', {
                     method: 'POST',
                     headers: {
@@ -119,17 +101,14 @@ export const TaskCreatePage = {
                     body: JSON.stringify({
                         title: title,
                         description: description,
-                        target_audience: target_audience,
                         preferred_style: preferred_style,
-                        references: references,
-                        deadline: deadline ? new Date(deadline).toISOString() : null
+                        references: references
                     })
                 });
 
                 if (response.ok) {
                     const task = await response.json();
 
-                    // 2. Загружаем изображения
                     if (TaskCreatePage.uploadedImages && TaskCreatePage.uploadedImages.length > 0) {
                         let uploaded = 0;
                         let failed = 0;
@@ -186,7 +165,7 @@ export const TaskCreatePage = {
     addImage() {
         const input = document.getElementById('imageInput');
         if (!input || !input.files || input.files.length === 0) {
-            if (window.showAlert) window.showAlert('❌ Выберите файлы для загрузки', 'error');
+            window.showAlert('❌ Выберите файлы для загрузки', 'error');
             return;
         }
 
@@ -195,20 +174,15 @@ export const TaskCreatePage = {
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-
-            // Проверка размера (50 МБ)
             if (file.size > 50 * 1024 * 1024) {
-                if (window.showAlert) window.showAlert('❌ Файл "' + file.name + '" слишком большой. Максимум: 50 МБ', 'error');
+                window.showAlert('❌ Файл "' + file.name + '" слишком большой. Максимум: 50 МБ', 'error');
                 continue;
             }
-
-            // Проверка типа
             const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff'];
             if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
-                if (window.showAlert) window.showAlert('❌ Файл "' + file.name + '" имеет неподдерживаемый формат.', 'error');
+                window.showAlert('❌ Файл "' + file.name + '" имеет неподдерживаемый формат.', 'error');
                 continue;
             }
-
             validFiles.push(file);
         }
 
@@ -216,7 +190,7 @@ export const TaskCreatePage = {
 
         this.uploadedImages = this.uploadedImages.concat(validFiles);
         this.updatePreview();
-        if (window.showAlert) window.showAlert('✅ Добавлено ' + validFiles.length + ' изображений. Всего: ' + this.uploadedImages.length, 'success');
+        window.showAlert('✅ Добавлено ' + validFiles.length + ' изображений. Всего: ' + this.uploadedImages.length, 'success');
         input.value = '';
     },
 
@@ -224,7 +198,7 @@ export const TaskCreatePage = {
         this.uploadedImages.splice(index, 1);
         this.updatePreview();
         if (this.uploadedImages.length === 0) {
-            if (window.showAlert) window.showAlert('📭 Все изображения удалены', 'info');
+            window.showAlert('📭 Все изображения удалены', 'info');
         }
     },
 
@@ -263,5 +237,6 @@ export const TaskCreatePage = {
     }
 };
 
-// Делаем методы глобальными для onclick
 window.TaskCreatePage = TaskCreatePage;
+window.addImageToTask = function() { TaskCreatePage.addImage(); };
+window.removeImageFromTask = function(index) { TaskCreatePage.removeImage(index); };
