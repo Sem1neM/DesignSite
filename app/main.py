@@ -2,14 +2,17 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from contextlib import asynccontextmanager
+import asyncio
+import os
+
 from app.core.database import Base, engine
 from app.core.config import settings
 from app.api.v1.router import router as v1_router
 from app.api.v1.endpoints.ws import ws_router
-import os
 
 # Импортируем модели
-from app.models import user, task, message, image
+from app.models import user, task, message, image, notification
 
 # Создаём таблицы
 Base.metadata.create_all(bind=engine)
@@ -17,10 +20,31 @@ Base.metadata.create_all(bind=engine)
 # Создаём папку для загрузок
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
+# Импортируем бота только если есть токен
+bot_task = None
+if settings.TELEGRAM_BOT_TOKEN:
+    from app.bot.main import main as bot_main
+else:
+    print("⚠️ TELEGRAM_BOT_TOKEN не задан. Бот не будет запущен.")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Запускаем Telegram бота только если есть токен
+    global bot_task
+    if settings.TELEGRAM_BOT_TOKEN:
+        print("🤖 Запуск Telegram бота...")
+        bot_task = asyncio.create_task(bot_main())
+    yield
+    if bot_task:
+        bot_task.cancel()
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    debug=settings.DEBUG
+    debug=settings.DEBUG,
+    lifespan=lifespan
 )
 
 # Подключаем статические файлы

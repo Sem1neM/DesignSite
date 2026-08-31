@@ -240,3 +240,57 @@ async def delete_image(
     db.commit()
 
     return {"message": "Image deleted successfully"}
+
+
+from fastapi.responses import StreamingResponse
+import zipfile
+import io
+
+
+@router.get("/task/{task_id}/download-zip")
+async def download_task_images_zip(
+        task_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    """
+    Скачать все изображения задачи одним ZIP-архивом
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    if current_user.role == "client" and task.client_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this task"
+        )
+
+    images = db.query(TaskImage).filter(TaskImage.task_id == task_id).all()
+
+    if not images:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No images found for this task"
+        )
+
+    # Создаём ZIP в памяти
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for img in images:
+            # Используем имя файла, заменяя недопустимые символы
+            safe_filename = "".join(c for c in img.filename if c.isalnum() or c in "._- ")
+            zip_file.writestr(safe_filename, img.file_data)
+
+    zip_buffer.seek(0)
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="task_{task_id}_images.zip"'
+        }
+    )

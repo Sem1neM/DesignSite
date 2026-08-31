@@ -29,8 +29,8 @@ class Task(Base):
     client_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     assigned_designer_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     client = relationship("User", foreign_keys=[client_id], backref="created_tasks")
     designer = relationship("User", foreign_keys=[assigned_designer_id], backref="assigned_tasks")

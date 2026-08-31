@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
 
     # Telegram
-    TELEGRAM_BOT_TOKEN: Optional[str] = None
+    TELEGRAM_BOT_TOKEN: Optional[str] = "8891007367:AAE5vmm79MSZHoQ5u7nhVecbPSLKqdPJtr4"
 
     # Application
     APP_NAME: str = "Design Task Manager"
