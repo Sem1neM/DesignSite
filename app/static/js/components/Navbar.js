@@ -19,6 +19,7 @@ export const Navbar = {
                 <div class="navbar-menu">
                     <span class="user-info">${user.full_name}</span>
                     <span class="role-badge">${user.role}</span>
+                    <button class="btn btn-secondary btn-sm" onclick="window.router.navigate('dashboard')">📁 Кабинет</button>
                     <div style="position:relative;display:inline-block;">
                         <button class="btn btn-secondary btn-sm" onclick="window.toggleNotifications()" style="position:relative;">
                             🔔
@@ -66,10 +67,7 @@ window.loadNotifications = async function() {
             notifications = await response.json();
             console.log('🔔 Уведомления загружены:', notifications.length);
             window.updateUnreadCount();
-            // Рендерим только если список существует
-            if (document.getElementById('notifList')) {
-                window.renderNotificationList();
-            }
+            window.renderNotificationList();
         } else {
             const err = await response.json();
             console.error('❌ Ошибка загрузки уведомлений:', err);
@@ -96,7 +94,8 @@ window.updateUnreadCount = function() {
 window.renderNotificationList = function() {
     const container = document.getElementById('notifList');
     if (!container) {
-        console.log('⚠️ notifList не найден');
+        console.log('⚠️ notifList не найден в DOM, повторная попытка через 100ms');
+        setTimeout(() => window.renderNotificationList(), 100);
         return;
     }
 
@@ -144,14 +143,7 @@ window.toggleNotifications = function() {
     if (dropdown) {
         dropdown.style.display = isOpen ? 'block' : 'none';
         if (isOpen) {
-            // Загружаем уведомления и сразу рендерим
-            window.loadNotifications().then(() => {
-                window.renderNotificationList();
-            }).catch(() => {
-                window.renderNotificationList();
-            });
-            // На всякий случай рендерим и без then
-            setTimeout(() => window.renderNotificationList(), 200);
+            window.loadNotifications();
         }
     }
 };
@@ -200,10 +192,10 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Обновляем бейдж при загрузке страницы (без открытия списка)
+// Автоматическая загрузка уведомлений после рендера Navbar
 setTimeout(() => {
     if (document.getElementById('notifBadge')) {
-        console.log('🔔 Обновляем бейдж уведомлений');
+        console.log('🔔 Автозагрузка уведомлений из Navbar');
         window.loadNotifications();
     }
 }, 1500);
