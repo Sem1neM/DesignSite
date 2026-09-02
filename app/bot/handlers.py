@@ -624,35 +624,16 @@ async def handle_callback_query(callback_query: types.CallbackQuery):
         await my_tasks_command(callback_query.message)
 
 
-import io
-import aiohttp
-from aiogram.types import InputFile
-from app.core.config import settings
+async def reset_password_command(message: types.Message):
+    """Команда для сброса пароля — запрашивает email"""
+    user = get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        await message.answer("❌ Вы не авторизованы. Используйте /login для входа.")
+        return
 
-
-# Функция для скачивания файла из Telegram
-async def download_telegram_file(file_id: str) -> bytes:
-    """Скачивает файл из Telegram по file_id"""
-    file = await bot.get_file(file_id)
-    file_url = f"https://api.telegram.org/file/bot{settings.TELEGRAM_BOT_TOKEN}/{file.file_path}"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(file_url) as resp:
-            return await resp.read()
-
-
-# Функция для загрузки изображения на сервер через API
-async def upload_image_to_task(task_id: int, file_bytes: bytes, filename: str) -> bool:
-    """Загружает изображение на сервер через API"""
-    token = None  # Для загрузки изображений нужен токен пользователя, но у нас его нет
-    # Так как бот не имеет токена пользователя, мы будем использовать внутренний API без авторизации?
-    # Или создадим специальный эндпоинт для бота с API-ключом.
-    # Пока используем прямой вызов без авторизации (но нужно добавить проверку в бэкенде)
-
-    # Временно используем прямой запрос к API (без авторизации, добавим проверку позже)
-    url = f"http://localhost:8000/api/v1/images/upload/{task_id}"
-    data = aiohttp.FormData()
-    data.add_field('file', file_bytes, filename=filename)
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, data=data) as resp:
-            return resp.status == 200
+    # Запрашиваем email для сброса (можно сразу использовать email пользователя)
+    # Но для безопасности попросим ввести email
+    user_states[message.from_user.id] = {"action": "reset_password", "step": "email"}
+    await message.answer(
+        "🔑 Введите email, на который зарегистрирован аккаунт:"
+    )

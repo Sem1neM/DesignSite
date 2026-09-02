@@ -83,3 +83,77 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
     Получить информацию о текущем пользователе
     """
     return current_user
+
+
+from datetime import datetime, timedelta
+import secrets
+from app.models.password_reset import PasswordResetToken
+from app.core.security import hash_password
+
+
+@router.post("/forgot-password")
+def forgot_password(email: str, db: Session = Depends(get_db)):
+    """
+    Запрос на восстановление пароля.
+    Отправляет ссылку для сброса на email (в лог).
+    """
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Не раскрываем, существует ли пользователь
+        return {"message": "Если email зарегистрирован, вы получите ссылку для сброса пароля"}
+
+    # Удаляем старые неиспользованные токены
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used == False,
+        PasswordResetToken.expires_at < datetime.utcnow()
+    ).delete()
+
+    # Создаём новый токен
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(hours=1)
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token=token,
+        expires_at=expires_at
+    )
+    db.add(reset_token)
+    db.commit()
+
+    # В реальном проекте здесь отправка email
+    reset_link = f"http://localhost:8000/reset-password?token={token}"
+    print(f"🔐 Ссылка для сброса пароля: {reset_link}")
+
+    return {"message": "Если email зарегистрирован, вы получите ссылку для сброса пароля"}
+
+
+@router.post("/reset-password")
+def reset_password(token: str, new_password: str, db: Session = Depends(get_db)):
+    """
+    Сброс пароля по токену.
+    """
+    reset_token = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token == token,
+        PasswordResetToken.used == False,
+        PasswordResetToken.expires_at > datetime.utcnow()
+    ).first()
+
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Недействительный или просроченный токен"
+        )
+
+    user = db.query(User).filter(User.id == reset_token.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пользователь не найден"
+        )
+
+    # Обновляем пароль
+    user.hashed_password = hash_password(new_password)
+    reset_token.used = True
+    db.commit()
+
+    return {"message": "Пароль успешно изменён"}

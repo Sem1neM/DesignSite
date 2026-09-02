@@ -25,6 +25,9 @@ export const LoginPage = {
                     <p style="text-align:center;margin-top:16px;">
                         <a href="#" onclick="router.navigate('register')">Зарегистрироваться</a>
                     </p>
+                    <p style="text-align:center;margin-top:12px;">
+    <a href="#" onclick="router.navigate('forgot-password')" style="color:#667eea;font-size:0.9rem;">Забыли пароль?</a>
+</p>
                 </div>
             </div>
         `;

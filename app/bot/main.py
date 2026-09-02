@@ -13,7 +13,7 @@ from app.bot.handlers import (
     task_status_command,
     cancel_command,
     handle_message,
-    handle_callback_query
+    handle_callback_query, reset_password_command
 )
 from app.core.config import settings
 
@@ -35,6 +35,8 @@ dp.message.register(handle_message)
 
 # Регистрация callback_query
 dp.callback_query.register(handle_callback_query)
+
+dp.message.register(reset_password_command, Command("reset"))
 
 
 async def main():

@@ -10,6 +10,8 @@ import { TasksPage } from '../pages/TasksPage.js';
 import { TaskCreatePage } from '../pages/TaskCreatePage.js';
 import { TaskDetailPage } from '../pages/TaskDetailPage.js';
 import { TaskEditPage } from '../pages/TaskEditPage.js';
+import { ForgotPasswordPage } from '../pages/ForgotPasswordPage.js';
+import { ResetPasswordPage } from '../pages/ResetPasswordPage.js';
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ФУНКЦИИ
@@ -88,6 +90,16 @@ router.register('task-edit', {
     title: 'Редактировать задачу',
     render: TaskEditPage.render,
     requiresAuth: true
+});
+
+router.register('forgot-password', {
+    title: 'Восстановление пароля',
+    render: ForgotPasswordPage.render
+});
+
+router.register('reset-password', {
+    title: 'Сброс пароля',
+    render: ResetPasswordPage.render
 });
 
 // ============================================
