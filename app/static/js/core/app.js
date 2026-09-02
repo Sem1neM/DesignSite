@@ -62,6 +62,16 @@ router.register('register', {
     redirectIfAuth: 'dashboard'
 });
 
+router.register('forgot-password', {
+    title: 'Восстановление пароля',
+    render: ForgotPasswordPage.render
+});
+
+router.register('reset-password', {
+    title: 'Сброс пароля',
+    render: ResetPasswordPage.render
+});
+
 router.register('dashboard', {
     title: 'Главная',
     render: DashboardPage.render,
@@ -92,16 +102,6 @@ router.register('task-edit', {
     requiresAuth: true
 });
 
-router.register('forgot-password', {
-    title: 'Восстановление пароля',
-    render: ForgotPasswordPage.render
-});
-
-router.register('reset-password', {
-    title: 'Сброс пароля',
-    render: ResetPasswordPage.render
-});
-
 // ============================================
 // ИНИЦИАЛИЗАЦИЯ
 // ============================================
@@ -120,17 +120,19 @@ async function initApp() {
                 store.setUser(user);
                 console.log('👤 User authenticated:', user.email);
 
-                // Загружаем уведомления после авторизации
+                // Загружаем уведомления
                 setTimeout(() => {
                     if (window.loadNotifications) {
                         console.log('🔔 Загружаем уведомления...');
                         window.loadNotifications();
-                    } else {
-                        console.log('⚠️ window.loadNotifications не найдена');
                     }
                 }, 500);
 
                 router.navigate('dashboard');
+                // Обновляем пилл после рендера
+                setTimeout(() => {
+                    if (window.updatePill) window.updatePill('dashboard');
+                }, 100);
                 return;
             } else {
                 store.clear();
@@ -144,6 +146,19 @@ async function initApp() {
     console.log('🔐 Not authenticated, showing login');
     router.navigate('login');
 }
+
+// Сохраняем оригинальный navigate для обновления пилла
+const originalNavigate = router.navigate.bind(router);
+router.navigate = function(page, params) {
+    originalNavigate(page, params);
+    // После рендера обновляем пилл
+    setTimeout(() => {
+        if (window.updatePill) {
+            const activeTab = ['tasks', 'task-detail', 'task-create', 'task-edit'].includes(page) ? 'tasks' : 'dashboard';
+            window.updatePill(activeTab);
+        }
+    }, 50);
+};
 
 document.addEventListener('DOMContentLoaded', initApp);
 

@@ -4,7 +4,7 @@ import { router } from '../core/router.js';
 import { Navbar } from '../components/Navbar.js';
 
 // ============================================
-// СТАТУСЫ НА РУССКОМ (ключи в нижнем регистре)
+// СТАТУСЫ НА РУССКОМ
 // ============================================
 const STATUS_MAP = {
     'new': 'Новая',
@@ -15,9 +15,23 @@ const STATUS_MAP = {
     'rejected': 'Отклонено'
 };
 
+const STATUS_CLASS_MAP = {
+    'new': 'new',
+    'clarification': 'new',
+    'ready_for_review': 'ready',
+    'in_progress': 'progress',
+    'completed': 'done',
+    'rejected': 'cancel'
+};
+
 function getStatusText(status) {
     const key = status ? status.toLowerCase() : '';
     return STATUS_MAP[key] || status || 'Неизвестно';
+}
+
+function getStatusClass(status) {
+    const key = status ? status.toLowerCase() : '';
+    return STATUS_CLASS_MAP[key] || 'new';
 }
 
 export const TaskDetailPage = {
@@ -32,375 +46,447 @@ export const TaskDetailPage = {
         const app = document.getElementById('app');
         app.innerHTML = `
             ${Navbar.render()}
-            <div class="container">
-                <div id="alertContainer"></div>
-                <div id="taskDetail">
-                    <div class="loader-container">
-                        <div class="loader"></div>
-                        <div>Загрузка задачи...</div>
+            <div class="app">
+                <section class="view active" id="taskDetail">
+                    <div id="taskDetailContent">
+                        <div class="loader-container" style="padding:40px 0;">
+                            <div class="loader"></div>
+                            <div>Загрузка задачи...</div>
+                        </div>
                     </div>
-                </div>
+                </section>
             </div>
         `;
 
-        loadTaskDetail(taskId, user);
-    }
-};
+        TaskDetailPage.loadTask(taskId, user);
+    },
 
-async function loadTaskDetail(taskId, user) {
-    try {
-        const token = store.get('token');
+    async loadTask(taskId, user) {
+        try {
+            const token = store.get('token');
 
-        const response = await fetch('/api/v1/tasks/' + taskId, {
-            headers: {
-                'Authorization': 'Bearer ' + token,
-                'Content-Type': 'application/json'
+            const response = await fetch('/api/v1/tasks/' + taskId, {
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                document.getElementById('taskDetailContent').innerHTML = `
+                    <div class="card" style="padding:32px;">
+                        <div class="alert alert-error">❌ Задача не найдена</div>
+                        <button class="btn btn-ghost btn-sm" onclick="window.router.navigate('tasks')">← Назад</button>
+                    </div>
+                `;
+                return;
             }
-        });
 
-        if (!response.ok) {
-            document.getElementById('taskDetail').innerHTML = `
-                <div class="card">
-                    <div class="alert alert-error">❌ Задача не найдена</div>
-                    <button class="btn btn-secondary" onclick="window.router.navigate('tasks')">← Назад</button>
+            const task = await response.json();
+
+            const imagesResponse = await fetch('/api/v1/images/task/' + taskId, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+
+            let images = [];
+            if (imagesResponse.ok) {
+                images = await imagesResponse.json();
+            }
+
+            const statusText = getStatusText(task.status);
+            const statusClass = getStatusClass(task.status);
+
+            const isClient = user.role === 'client' && task.client_id === user.id;
+            const isDesigner = user.role === 'designer';
+            const isAdmin = user.role === 'admin';
+
+            // ============================================
+            // ИЗОБРАЖЕНИЯ
+            // ============================================
+            let imagesHtml = '';
+            if (images.length > 0) {
+                const imagesItems = images.map(img => `
+                    <div class="file-chip">
+                        <div class="file-thumb" style="background:url('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}') center/cover;"></div>
+                        <div class="file-info">
+                            <div class="fn" title="${img.filename}">${img.filename}</div>
+                            <div class="fs">${formatFileSize(img.file_size)}</div>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}', '_blank')">👁️</button>
+                        ${(isClient || isAdmin) ? `<button class="btn btn-ghost btn-sm" onclick="deleteImage(${img.id}, ${taskId})">✕</button>` : ''}
+                    </div>
+                `).join('');
+
+                imagesHtml = `
+                    <div class="panel">
+                        <div class="files-head">
+                            <h3>🖼️ Изображения-референсы</h3>
+                            ${(isDesigner || isAdmin) ? `
+                                <button class="btn btn-ghost btn-sm" onclick="downloadAllImages(${taskId})">
+                                    ⬇️ Скачать все (${images.length})
+                                </button>
+                            ` : ''}
+                        </div>
+                        <div class="file-row">
+                            ${imagesItems}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // ============================================
+            // СТЕППЕР СТАТУСОВ
+            // ============================================
+            const stepOrder = ['new', 'clarification', 'ready_for_review', 'in_progress', 'completed', 'rejected'];
+            const currentIdx = stepOrder.indexOf(task.status.toLowerCase());
+            const steps = stepOrder.map((s, idx) => {
+                const label = STATUS_MAP[s] || s;
+                let state = '';
+                if (idx < currentIdx) state = 'done';
+                else if (idx === currentIdx) state = 'current';
+                return `<div class="step ${state}"><div class="dot">${state === 'done' ? '✓' : idx+1}</div><span class="label">${label}</span></div>`;
+            });
+
+            // Вставляем линии между шагами
+            let stepperHtml = '<div class="stepper">';
+            for (let i=0; i<steps.length; i++) {
+                stepperHtml += steps[i];
+                if (i < steps.length-1) stepperHtml += '<div class="line"></div>';
+            }
+            stepperHtml += '</div>';
+
+            // ============================================
+            // ЧАТ
+            // ============================================
+            // Для чата будем использовать заглушку, реальный WebSocket будет позже
+            const chatHtml = `
+                <div class="panel chat-panel">
+                    <h3>💬 Чат по задаче</h3>
+                    <div class="chat-thread" id="chatThread">
+                        <div class="msg">
+                            <div class="mavatar" style="background:linear-gradient(135deg,var(--blue),var(--violet));">${user.full_name.charAt(0)}</div>
+                            <div>
+                                <div class="bubble">Здесь будут сообщения с ИИ-агентом и дизайнером</div>
+                                <div class="time">Подключите WebSocket</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chatInput" placeholder="Написать сообщение…">
+                        <button class="send-btn" onclick="sendChatMessage(${task.id})">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 12l16-8-6 16-3-7-7-1z" stroke="white" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>
+                        </button>
+                    </div>
                 </div>
             `;
-            return;
-        }
 
-        const task = await response.json();
+            // ============================================
+            // ИЗМЕНЕНИЕ СТАТУСА (только для дизайнера и админа)
+            // ============================================
+            let statusSelectHtml = '';
+            if (isDesigner || isAdmin) {
+                const statusList = {
+                    'new': 'Новая',
+                    'clarification': 'Уточнение',
+                    'ready_for_review': 'Готово к проверке',
+                    'in_progress': 'В работе',
+                    'completed': 'Завершено',
+                    'rejected': 'Отклонено'
+                };
+                const currentStatus = task.status.toLowerCase();
+                let options = '';
+                for (const [key, label] of Object.entries(statusList)) {
+                    // Для дизайнера убираем completed и rejected
+                    if (isDesigner && (key === 'completed' || key === 'rejected')) continue;
+                    const selected = key === currentStatus ? 'selected' : '';
+                    options += `<option value="${key}" ${selected}>${label}</option>`;
+                }
+                statusSelectHtml = `
+                    <div class="side-row">
+                        <span class="field-label">Изменить статус</span>
+                        <select class="status-select" id="statusSelect">
+                            ${options}
+                        </select>
+                        <button class="btn btn-primary btn-sm" style="width:100%; justify-content:center; margin-top:10px;" onclick="updateTaskStatus(${task.id})">
+                            Обновить статус
+                        </button>
+                    </div>
+                `;
+            }
 
-        const statusText = getStatusText(task.status);
-        console.log('🔍 Статус задачи (оригинал):', task.status);
-        console.log('🔍 Статус на русском:', statusText);
+            // ============================================
+            // ЗАГРУЗКА НОВОГО ИЗОБРАЖЕНИЯ
+            // ============================================
+            const uploadHtml = `
+                <div class="side-row">
+                    <div class="upload-zone">
+                        <b onclick="document.getElementById('imageInput').click()">Выбрать файл</b> или перетащите сюда<br>
+                        JPG, PNG, GIF, WEBP, SVG, BMP, TIFF · до 50 МБ
+                        <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="uploadImageToTask(${task.id})">
+                    </div>
+                </div>
+            `;
 
-        const imagesResponse = await fetch('/api/v1/images/task/' + taskId, {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
+            // ============================================
+            // ФОРМИРУЕМ HTML
+            // ============================================
+            const container = document.getElementById('taskDetailContent');
+            container.innerHTML = `
+                <div class="task-topline">
+                    <button class="back-link" onclick="window.router.navigate('tasks')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Назад к задачам
+                    </button>
+                    <div class="task-actions">
+                        ${(isClient || isAdmin) ? `<button class="btn btn-primary btn-sm" onclick="window.router.navigate('task-edit', {id: ${task.id}})">✏️ Редактировать</button>` : ''}
+                        ${isClient ? `<button class="btn btn-ghost btn-sm" onclick="window.deleteTask(${task.id})">🗑 Удалить</button>` : ''}
+                    </div>
+                </div>
 
-        let images = [];
-        if (imagesResponse.ok) {
-            images = await imagesResponse.json();
-        }
+                <div class="task-heading">
+                    <h1>${task.title}</h1>
+                    <span class="status-chip ${statusClass}">${statusText}</span>
+                </div>
 
-        const container = document.getElementById('taskDetail');
+                ${stepperHtml}
 
-        const isClient = user.role === 'client' && task.client_id === user.id;
-        const isDesigner = user.role === 'designer';
-        const isAdmin = user.role === 'admin';
+                <div class="task-grid">
+                    <div class="task-main">
+                        <div class="panel">
+                            <h3>📝 Описание</h3>
+                            <p class="desc-text">${task.description || 'Нет описания'}</p>
+                            ${task.clarified_description ? `
+                                <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line);">
+                                    <h3>🤖 Уточнённое ТЗ (ИИ)</h3>
+                                    <p class="desc-text">${task.clarified_description}</p>
+                                </div>
+                            ` : ''}
+                            ${task.preferred_style ? `<div style="margin-top:12px;"><strong>Стиль:</strong> ${task.preferred_style}</div>` : ''}
+                            ${task.references && task.references.length ? `
+                                <div style="margin-top:12px;">
+                                    <strong>Референсы (ссылки):</strong>
+                                    ${task.references.map(ref => `<a href="${ref}" target="_blank" style="color:var(--violet);display:block;">${ref}</a>`).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
 
-        let imagesHtml = '';
-        if (images.length > 0) {
-            const imagesItems = images.map(img => `
-                <div class="image-card">
-                    <img src="/api/v1/images/${img.id}?token=${encodeURIComponent(token)}" alt="${img.filename}"
-                         onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}', '_blank')"
-                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23f0f2f5%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23a0aec0%22 font-family=%22Arial%22 font-size=%2214%22%3EОшибка%3C/text%3E%3C/svg%3E'">
-                    <div class="image-info">
-                        <div class="filename" title="${img.filename}">${img.filename}</div>
-                        <div class="meta">
-                            <span>📦 ${formatFileSize(img.file_size)}</span>
-                            ${img.width && img.height ? `<span>📐 ${img.width}×${img.height}</span>` : ''}
-                            <span>🕐 ${new Date(img.created_at).toLocaleDateString()}</span>
+                        ${imagesHtml}
+
+                        ${chatHtml}
+                    </div>
+
+                    <div class="task-side">
+                        <div class="side-panel">
+                            <div class="side-row">
+                                <div class="label">📍 Место в очереди</div>
+                                <div class="queue-value"><span class="n">—</span><span class="sub">(скоро)</span></div>
+                            </div>
+                            <div class="side-row">
+                                <div class="label">Статус</div>
+                                <div class="value" style="color:var(--${statusClass === 'done' ? 'green' : statusClass === 'progress' ? 'blue' : 'violet'});">${statusText}</div>
+                            </div>
+                            <div class="side-row">
+                                <div class="label">📅 Создана</div>
+                                <div class="value" style="font-size:14.5px;">${new Date(task.created_at).toLocaleString()}</div>
+                                <div class="sub">${Math.floor((Date.now() - new Date(task.created_at)) / (1000*60*60*24))} дней назад</div>
+                            </div>
+                            <div class="side-row">
+                                <div class="label">🔄 Обновлена</div>
+                                <div class="value" style="font-size:14.5px;">${task.updated_at ? new Date(task.updated_at).toLocaleString() : '—'}</div>
+                            </div>
+                            <div class="side-row">
+                                <div class="label">👤 Клиент</div>
+                                <div class="value" style="font-size:14.5px;">#${task.client_id}</div>
+                            </div>
+                            ${task.assigned_designer_id ? `
+                                <div class="side-row">
+                                    <div class="label">👨‍🎨 Дизайнер</div>
+                                    <div class="value" style="font-size:14.5px;">#${task.assigned_designer_id}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="side-panel">
+                            ${statusSelectHtml}
+                            ${uploadHtml}
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `;
 
-            imagesHtml = `
-                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                        <div style="font-weight: 600; font-size: 0.9rem; color: #4a4a6a;">🖼️ Изображения-референсы</div>
-                        ${(isDesigner || isAdmin) ? `
-                            <button class="btn btn-primary btn-sm" onclick="downloadAllImages(${taskId})">
-                                ⬇️ Скачать все (${images.length})
-                            </button>
-                        ` : ''}
-                    </div>
-                    <div class="image-grid">
-                        ${imagesItems}
-                    </div>
+        } catch (error) {
+            console.error('❌ Fetch error:', error);
+            document.getElementById('taskDetailContent').innerHTML = `
+                <div class="card" style="padding:32px;">
+                    <div class="alert alert-error">❌ Ошибка загрузки: ${error.message}</div>
+                    <button class="btn btn-ghost btn-sm" onclick="window.router.navigate('tasks')">← Назад</button>
                 </div>
             `;
         }
-
-        let canChangeStatus = false;
-        let statusOptions = '';
-
-        const statusList = {
-            'new': 'Новая',
-            'clarification': 'Уточнение',
-            'ready_for_review': 'Готово к проверке',
-            'in_progress': 'В работе',
-            'completed': 'Завершено',
-            'rejected': 'Отклонено'
-        };
-
-        const currentStatus = task.status ? task.status.toLowerCase() : '';
-
-        if (isAdmin) {
-            canChangeStatus = true;
-            for (const [key, label] of Object.entries(statusList)) {
-                statusOptions += `<option value="${key}" ${currentStatus === key ? 'selected' : ''}>${label}</option>`;
-            }
-        } else if (isDesigner) {
-            canChangeStatus = true;
-            const designerStatuses = ['new', 'clarification', 'ready_for_review', 'in_progress'];
-            for (const key of designerStatuses) {
-                statusOptions += `<option value="${key}" ${currentStatus === key ? 'selected' : ''}>${statusList[key]}</option>`;
-            }
-        } else if (isClient && task.status !== 'COMPLETED') {
-            canChangeStatus = true;
-            statusOptions = `
-                <option value="completed">Завершено</option>
-            `;
-        }
-
-        const html = `
-            <div class="card">
-                <div class="card-header">
-                    <div>
-                        <span class="card-title">${task.title}</span>
-                        <span class="status-badge status-${task.status}">${statusText}</span>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-secondary btn-sm" onclick="window.router.navigate('tasks')">← Назад</button>
-                        ${(isClient || isAdmin) ? `<button class="btn btn-primary btn-sm" onclick="window.router.navigate('task-edit', {id: ${task.id}})">✏️ Редактировать</button>` : ''}
-                        ${isClient ? `<button class="btn btn-danger btn-sm" onclick="window.deleteTask(${task.id})">🗑 Удалить</button>` : ''}
-                    </div>
-                </div>
-                <div class="task-detail-grid">
-                    <div>
-                        <div class="field-label">📝 Описание</div>
-                        <div class="field-value">${task.description || '—'}</div>
-                        ${task.clarified_description ? `<div class="field-label">🤖 Уточнённое ТЗ (ИИ)</div><div class="field-value" style="background: #f7fafc; padding: 12px; border-radius: 8px;">${task.clarified_description}</div>` : ''}
-                        <div class="field-label">🎨 Предпочтительный стиль</div>
-                        <div class="field-value">${task.preferred_style || '—'}</div>
-                        ${task.references && task.references.length > 0 ? `<div class="field-label">🔗 Референсы (ссылки)</div><div class="field-value">${task.references.map(ref => `<a href="${ref}" target="_blank" style="color: #667eea; display: block;">${ref}</a>`).join('')}</div>` : ''}
-                        ${imagesHtml}
-                    </div>
-                    <div>
-                        <div class="field-label">🆔 ID</div>
-                        <div class="field-value">#${task.id}</div>
-                        <div class="field-label">📊 Статус</div>
-                        <div class="field-value"><span class="status-badge status-${task.status}">${statusText}</span></div>
-                        <div class="field-label">👤 Клиент</div>
-                        <div class="field-value">${task.client_id}</div>
-                        <div class="field-label">📅 Создана</div>
-                        <div class="field-value">${new Date(task.created_at).toLocaleString()}</div>
-                        <div class="field-label">🔄 Обновлена</div>
-                        <div class="field-value">${new Date(task.updated_at).toLocaleString()}</div>
-
-                        ${canChangeStatus ? `
-                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-                                <label style="font-weight: 600; font-size: 0.85rem; color: #4a4a6a; display: block; margin-bottom: 4px;">Изменить статус</label>
-                                <select id="statusSelect" class="form-control" style="margin-bottom: 8px;">
-                                    ${statusOptions}
-                                </select>
-                                <button class="btn btn-primary btn-sm btn-block" onclick="updateTaskStatus(${task.id})">Обновить статус</button>
-                            </div>
-                        ` : ''}
-
-                        ${(isClient || isDesigner || isAdmin) ? `
-                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-                                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                                    <input type="file" id="imageInput" accept="image/*" style="padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8rem; max-width: 180px;">
-                                    <button class="btn btn-primary btn-sm" onclick="uploadImageToTask(${task.id})">📤 Загрузить</button>
-                                </div>
-                                <div style="font-size: 0.7rem; color: #a0aec0; margin-top: 4px;">Максимум: 50 МБ. Форматы: JPG, PNG, GIF, WEBP, SVG, BMP, TIFF</div>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-
-        container.innerHTML = html;
-
-    } catch (error) {
-        console.error('❌ Fetch error:', error);
-        document.getElementById('taskDetail').innerHTML = '<div class="alert alert-error">❌ Ошибка загрузки: ' + error.message + '</div>';
     }
-}
+};
 
 // ============================================
-// СКАЧИВАНИЕ ВСЕХ ИЗОБРАЖЕНИЙ
+// ГЛОБАЛЬНЫЕ ФУНКЦИИ (для onclick)
 // ============================================
 
+// Изменение статуса
+window.updateTaskStatus = async function(taskId) {
+    const sel = document.getElementById('statusSelect');
+    if (!sel) return;
+    const status = sel.value;
+    try {
+        const token = store.get('token');
+        const res = await fetch(`/api/v1/tasks/${taskId}/status?status=${status}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            window.showAlert('✅ Статус обновлён!', 'success');
+            setTimeout(() => window.router.navigate('task-detail', { id: taskId }), 500);
+        } else {
+            const err = await res.json();
+            window.showAlert('❌ ' + (err.detail || 'Ошибка'), 'error');
+        }
+    } catch (e) {
+        window.showAlert('❌ Ошибка', 'error');
+    }
+};
+
+// Загрузка изображения
+window.uploadImageToTask = async function(taskId) {
+    const input = document.getElementById('imageInput');
+    if (!input || !input.files || !input.files.length) {
+        window.showAlert('❌ Выберите файл', 'error');
+        return;
+    }
+    const file = input.files[0];
+    if (file.size > 50 * 1024 * 1024) {
+        window.showAlert('❌ Файл слишком большой (макс. 50 МБ)', 'error');
+        return;
+    }
+    try {
+        const token = store.get('token');
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`/api/v1/images/upload/${taskId}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: fd
+        });
+        if (res.ok) {
+            window.showAlert('✅ Изображение загружено!', 'success');
+            input.value = '';
+            const user = store.get('user');
+            TaskDetailPage.loadTask(taskId, user);
+        } else {
+            const err = await res.json();
+            window.showAlert('❌ ' + (err.detail || 'Ошибка'), 'error');
+        }
+    } catch (e) {
+        window.showAlert('❌ Ошибка', 'error');
+    }
+};
+
+// Удаление изображения
+window.deleteImage = async function(imageId, taskId) {
+    if (!confirm('Удалить это изображение?')) return;
+    try {
+        const token = store.get('token');
+        const res = await fetch(`/api/v1/images/${imageId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            window.showAlert('✅ Изображение удалено', 'success');
+            const user = store.get('user');
+            TaskDetailPage.loadTask(taskId, user);
+        } else {
+            const err = await res.json();
+            window.showAlert('❌ ' + (err.detail || 'Ошибка'), 'error');
+        }
+    } catch (e) {
+        window.showAlert('❌ Ошибка', 'error');
+    }
+};
+
+// Скачивание всех изображений
 window.downloadAllImages = async function(taskId) {
     try {
         const token = store.get('token');
-
-        window.showAlert('⏳ Подготовка изображений к скачиванию...', 'info');
-
-        const response = await fetch('/api/v1/images/task/' + taskId, {
-            headers: { 'Authorization': 'Bearer ' + token }
+        const res = await fetch(`/api/v1/images/task/${taskId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (!response.ok) {
-            throw new Error('Не удалось получить список изображений');
-        }
-
-        const images = await response.json();
-
-        if (images.length === 0) {
-            window.showAlert('❌ Нет изображений для скачивания', 'error');
+        if (!res.ok) throw new Error('Не удалось получить список изображений');
+        const images = await res.json();
+        if (!images.length) {
+            window.showAlert('❌ Нет изображений', 'error');
             return;
         }
-
-        if (images.length === 1) {
-            window.open('/api/v1/images/' + images[0].id + '?token=' + encodeURIComponent(token), '_blank');
-            window.showAlert('✅ Изображение открыто в новой вкладке', 'success');
-            return;
+        // Скачиваем по одному
+        window.showAlert(`⏳ Скачивание ${images.length} изображений...`, 'info');
+        let downloaded = 0;
+        for (const img of images) {
+            const link = document.createElement('a');
+            link.href = `/api/v1/images/${img.id}?token=${encodeURIComponent(token)}`;
+            link.download = img.filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            downloaded++;
+            await new Promise(r => setTimeout(r, 300));
         }
-
-        const zipResponse = await fetch('/api/v1/images/task/' + taskId + '/download-zip', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-
-        if (zipResponse.ok) {
-            const contentDisposition = zipResponse.headers.get('Content-Disposition');
-            let filename = 'images.zip';
-            if (contentDisposition) {
-                const match = contentDisposition.match(/filename="(.+)"/);
-                if (match) {
-                    filename = match[1];
-                }
-            }
-
-            const blob = await zipResponse.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            window.showAlert('✅ Все изображения скачаны!', 'success');
-        } else {
-            window.showAlert('⏳ Скачивание изображений по одному...', 'info');
-
-            let downloaded = 0;
-            for (const img of images) {
-                const imgUrl = '/api/v1/images/' + img.id + '?token=' + encodeURIComponent(token);
-                const link = document.createElement('a');
-                link.href = imgUrl;
-                link.download = img.filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                downloaded++;
-                await new Promise(resolve => setTimeout(resolve, 300));
-            }
-
-            window.showAlert('✅ Скачано ' + downloaded + ' изображений', 'success');
-        }
-
-    } catch (error) {
-        console.error('❌ Ошибка скачивания:', error);
-        window.showAlert('❌ Ошибка при скачивании: ' + error.message, 'error');
+        window.showAlert(`✅ Скачано ${downloaded} изображений`, 'success');
+    } catch (e) {
+        window.showAlert('❌ ' + e.message, 'error');
     }
 };
 
-// ============================================
-// ОБНОВЛЕНИЕ СТАТУСА
-// ============================================
+// Отправка сообщения в чат (заглушка)
+window.sendChatMessage = function(taskId) {
+    const input = document.getElementById('chatInput');
+    if (!input || !input.value.trim()) return;
+    const msg = input.value.trim();
+    const thread = document.getElementById('chatThread');
+    const div = document.createElement('div');
+    div.className = 'msg me';
+    const user = store.get('user');
+    const initials = user.full_name.split(' ').map(n => n[0]).join('').toUpperCase();
+    div.innerHTML = `
+        <div class="mavatar" style="background:linear-gradient(135deg,var(--violet),var(--pink));">${initials}</div>
+        <div>
+            <div class="bubble">${msg}</div>
+            <div class="time">Вы · только что</div>
+        </div>
+    `;
+    thread.appendChild(div);
+    thread.scrollTop = thread.scrollHeight;
+    input.value = '';
+    // Здесь можно отправить сообщение в WebSocket
+};
 
-window.updateTaskStatus = async function(taskId) {
-    const statusSelect = document.getElementById('statusSelect');
-    if (!statusSelect) {
-        window.showAlert('❌ Элемент выбора статуса не найден', 'error');
-        return;
-    }
-
-    const statusValue = statusSelect.value;
-    const statusLower = statusValue.toLowerCase();
-
+// Удаление задачи
+window.deleteTask = async function(taskId) {
+    if (!confirm('Вы уверены, что хотите удалить задачу?')) return;
     try {
         const token = store.get('token');
-        const response = await fetch('/api/v1/tasks/' + taskId + '/status?status=' + statusLower, {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + token,
-                'Content-Type': 'application/json'
-            }
+        const res = await fetch(`/api/v1/tasks/${taskId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (response.ok) {
-            window.showAlert('✅ Статус обновлён!', 'success');
-            setTimeout(function() {
-                const user = store.get('user');
-                loadTaskDetail(taskId, user);
-            }, 500);
+        if (res.ok) {
+            window.showAlert('✅ Задача удалена', 'success');
+            setTimeout(() => window.router.navigate('tasks'), 500);
         } else {
-            let errorMessage = 'Ошибка обновления статуса';
-            try {
-                const error = await response.json();
-                errorMessage = error.detail || errorMessage;
-            } catch (e) {}
-            window.showAlert('❌ ' + errorMessage, 'error');
+            const err = await res.json();
+            window.showAlert('❌ ' + (err.detail || 'Ошибка'), 'error');
         }
     } catch (e) {
-        window.showAlert('❌ Ошибка соединения: ' + e.message, 'error');
+        window.showAlert('❌ Ошибка', 'error');
     }
 };
 
-// ============================================
-// ЗАГРУЗКА ИЗОБРАЖЕНИЙ
-// ============================================
-
-window.uploadImageToTask = async function(taskId) {
-    const input = document.getElementById('imageInput');
-    if (!input || !input.files || input.files.length === 0) {
-        window.showAlert('❌ Выберите файл для загрузки', 'error');
-        return;
-    }
-
-    const file = input.files[0];
-
-    if (file.size > 50 * 1024 * 1024) {
-        window.showAlert('❌ Файл слишком большой. Максимум: 50 МБ', 'error');
-        return;
-    }
-
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff'];
-    if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
-        window.showAlert('❌ Неподдерживаемый формат файла', 'error');
-        return;
-    }
-
-    try {
-        const token = store.get('token');
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch('/api/v1/images/upload/' + taskId, {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token },
-            body: formData
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            window.showAlert('✅ Изображение "' + data.filename + '" загружено!', 'success');
-            input.value = '';
-            const user = store.get('user');
-            loadTaskDetail(taskId, user);
-        } else {
-            const err = await response.json();
-            window.showAlert('❌ ' + (err.detail || 'Ошибка загрузки'), 'error');
-        }
-    } catch (e) {
-        window.showAlert('❌ Ошибка соединения', 'error');
-    }
-};
-
-// ============================================
-// ФОРМАТИРОВАНИЕ РАЗМЕРА
-// ============================================
-
+// Вспомогательная функция
 function formatFileSize(size) {
     if (size < 1024) return size + ' B';
     if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB';
@@ -408,33 +494,7 @@ function formatFileSize(size) {
     return (size / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
-// ============================================
-// УДАЛЕНИЕ ЗАДАЧИ
-// ============================================
-
-window.deleteTask = async function(taskId) {
-    if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
-    try {
-        const token = store.get('token');
-        const response = await fetch('/api/v1/tasks/' + taskId, {
-            method: 'DELETE',
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (response.ok) {
-            window.showAlert('✅ Задача удалена', 'success');
-            setTimeout(function() { window.router.navigate('tasks'); }, 500);
-        } else {
-            window.showAlert('❌ Не удалось удалить задачу', 'error');
-        }
-    } catch (e) {
-        window.showAlert('❌ Ошибка соединения', 'error');
-    }
-};
-
-// ============================================
-// ВЫХОД
-// ============================================
-
+// Выход
 window.logout = function() {
     store.clear();
     window.router.navigate('login');

@@ -7,21 +7,22 @@ export const RegisterPage = {
         const app = document.getElementById('app');
         app.innerHTML = `
             <div style="max-width:400px;margin:80px auto;">
-                <div class="card">
-                    <h2 style="text-align:center;">📝 Регистрация</h2>
+                <div class="card" style="padding:32px;">
+                    <h2 style="text-align:center;font-size:24px;margin-bottom:8px;">Регистрация</h2>
+                    <p class="text-muted" style="text-align:center;margin-bottom:24px;">Создайте новую учетную запись</p>
                     <div id="alertContainer"></div>
                     <form id="registerForm">
                         <div class="form-group">
                             <label>Email</label>
-                            <input type="email" id="regEmail" class="form-control" required>
+                            <input type="email" id="regEmail" class="form-control" placeholder="example@mail.com" required>
                         </div>
                         <div class="form-group">
                             <label>Полное имя</label>
-                            <input type="text" id="regName" class="form-control" required>
+                            <input type="text" id="regName" class="form-control" placeholder="Иван Иванов" required>
                         </div>
                         <div class="form-group">
-                            <label>Пароль</label>
-                            <input type="password" id="regPassword" class="form-control" required minlength="6">
+                            <label>Пароль (мин. 6 символов)</label>
+                            <input type="password" id="regPassword" class="form-control" placeholder="••••••••" required minlength="6">
                         </div>
                         <div class="form-group">
                             <label>Роль</label>
@@ -30,17 +31,17 @@ export const RegisterPage = {
                                 <option value="designer">Дизайнер</option>
                             </select>
                         </div>
-                        <button type="submit" class="btn btn-primary btn-block">Зарегистрироваться</button>
+                        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">Зарегистрироваться</button>
                     </form>
                     <div id="registerError" class="hidden alert-error" style="margin-top:12px;"></div>
                     <p style="text-align:center;margin-top:16px;">
-                        <a href="#" onclick="router.navigate('login')">Войти</a>
+                        Уже есть аккаунт? <a href="#" onclick="router.navigate('login')">Войти</a>
                     </p>
                 </div>
             </div>
         `;
 
-        document.getElementById('registerForm').addEventListener('submit', async function(e) {
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('regEmail').value;
             const full_name = document.getElementById('regName').value;
@@ -57,16 +58,15 @@ export const RegisterPage = {
 
                 if (response.ok) {
                     const data = await response.json();
-                    store.setToken(data.access_token);
-
-                    const userResponse = await fetch('/api/v1/auth/me', {
-                        headers: { 'Authorization': 'Bearer ' + data.access_token }
+                    localStorage.setItem('access_token', data.access_token);
+                    const meRes = await fetch('/api/v1/auth/me', {
+                        headers: { 'Authorization': `Bearer ${data.access_token}` }
                     });
-                    if (userResponse.ok) {
-                        const user = await userResponse.json();
+                    if (meRes.ok) {
+                        const user = await meRes.json();
                         store.setUser(user);
-                        router.navigate('dashboard');
                     }
+                    router.navigate('dashboard');
                 } else {
                     const err = await response.json();
                     errorDiv.textContent = '❌ ' + (err.detail || 'Ошибка регистрации');

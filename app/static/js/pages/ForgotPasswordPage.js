@@ -6,17 +6,16 @@ export const ForgotPasswordPage = {
         const app = document.getElementById('app');
         app.innerHTML = `
             <div style="max-width:400px;margin:80px auto;">
-                <div class="card">
-                    <h2 style="text-align:center;">🔑 Восстановление пароля</h2>
-                    <p class="text-muted" style="text-align:center;margin-bottom:20px;">
-                        Введите email, и мы отправим ссылку для сброса пароля
-                    </p>
+                <div class="card" style="padding:32px;">
+                    <h2 style="text-align:center;font-size:24px;margin-bottom:8px;">Восстановление пароля</h2>
+                    <p class="text-muted" style="text-align:center;margin-bottom:24px;">Введите email, и мы отправим ссылку для сброса</p>
+                    <div id="alertContainer"></div>
                     <form id="forgotForm">
                         <div class="form-group">
                             <label>Email</label>
-                            <input type="email" id="email" class="form-control" required>
+                            <input type="email" id="email" class="form-control" placeholder="example@mail.com" required>
                         </div>
-                        <button type="submit" class="btn btn-primary btn-block">Отправить</button>
+                        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">Отправить</button>
                     </form>
                     <div id="message" class="hidden" style="margin-top:12px;"></div>
                     <p style="text-align:center;margin-top:16px;">

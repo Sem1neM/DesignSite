@@ -6,10 +6,10 @@ export const ResetPasswordPage = {
         const token = params.token || new URLSearchParams(window.location.search).get('token');
         if (!token) {
             document.getElementById('app').innerHTML = `
-                <div class="container" style="max-width:400px;margin:80px auto;">
-                    <div class="card">
+                <div style="max-width:400px;margin:80px auto;">
+                    <div class="card" style="padding:32px;">
                         <div class="alert alert-error">❌ Не передан токен сброса</div>
-                        <button class="btn btn-secondary" onclick="router.navigate('login')">← На вход</button>
+                        <button class="btn btn-ghost" onclick="router.navigate('login')">← На вход</button>
                     </div>
                 </div>
             `;
@@ -19,21 +19,20 @@ export const ResetPasswordPage = {
         const app = document.getElementById('app');
         app.innerHTML = `
             <div style="max-width:400px;margin:80px auto;">
-                <div class="card">
-                    <h2 style="text-align:center;">🔄 Сброс пароля</h2>
-                    <p class="text-muted" style="text-align:center;margin-bottom:20px;">
-                        Введите новый пароль
-                    </p>
+                <div class="card" style="padding:32px;">
+                    <h2 style="text-align:center;font-size:24px;margin-bottom:8px;">Сброс пароля</h2>
+                    <p class="text-muted" style="text-align:center;margin-bottom:24px;">Введите новый пароль</p>
+                    <div id="alertContainer"></div>
                     <form id="resetForm">
                         <div class="form-group">
-                            <label>Новый пароль (минимум 6 символов)</label>
-                            <input type="password" id="password" class="form-control" required minlength="6">
+                            <label>Новый пароль (мин. 6 символов)</label>
+                            <input type="password" id="password" class="form-control" placeholder="••••••••" required minlength="6">
                         </div>
                         <div class="form-group">
                             <label>Подтвердите пароль</label>
-                            <input type="password" id="confirm" class="form-control" required minlength="6">
+                            <input type="password" id="confirm" class="form-control" placeholder="••••••••" required minlength="6">
                         </div>
-                        <button type="submit" class="btn btn-primary btn-block">Сменить пароль</button>
+                        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">Сменить пароль</button>
                     </form>
                     <div id="message" class="hidden" style="margin-top:12px;"></div>
                     <p style="text-align:center;margin-top:16px;">
