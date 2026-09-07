@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *.so
 .Python
-../.venv/
+.venv/
 venv/
 ENV/
 
@@ -21,6 +21,10 @@ ENV/
 *.db
 *.sqlite3
 
+# Uploaded files (created at runtime, see app/core/config.py UPLOAD_DIR)
+app/uploads/*
+!app/uploads/.gitkeep
+
 # Logs
 *.log
 logs/
@@ -36,6 +40,3 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
-
-# Project specific
-design.db

@@ -5,8 +5,13 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from sqlalchemy.orm import Session
-from app.core.database import SessionLocal
-from app.models.user import User, UserRole  # Прямой импорт
+from app.core.database import Base, engine, SessionLocal
+from app.models.user import User, UserRole
+# Остальные модели нужно импортировать до первого использования User —
+# SQLAlchemy резолвит relationship("Notification", ...) на User по имени
+# класса и падает с "failed to locate a name", если Notification (и другие
+# связанные модели) ещё не зарегистрированы в маппере.
+from app.models import task, message, image, notification, password_reset
 from app.core.security import hash_password
 
 
@@ -55,6 +60,10 @@ def seed_database():
     """Заполнение базы данных тестовыми данными"""
     print("🔄 Заполнение базы данных...")
     print("-" * 40)
+
+    # На случай, если скрипт запускают до первого старта приложения —
+    # таблицы иначе создаёт только app/main.py при импорте.
+    Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
     try:

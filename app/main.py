@@ -97,7 +97,7 @@ app.include_router(v1_router, prefix="/api")
 app.include_router(ws_router)
 
 # Шаблоны
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="app/templates")
 
 
 @app.get("/", response_class=HTMLResponse)
