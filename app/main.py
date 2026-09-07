@@ -47,6 +47,45 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """
+    Базовые security-заголовки для всех ответов.
+
+    CSP намеренно разрешает 'unsafe-inline' для script-src/style-src:
+    фронтенд активно использует инлайновые onclick="..." и style="..."
+    по всему коду, и без 'unsafe-inline' приложение сразу перестанет
+    работать. Даже такой CSP всё же режет самый частый следующий шаг
+    после XSS — эксфильтрацию данных на чужой домен (img/script/fetch/WS
+    на сторонний origin) и встраивание сайта во фрейм на другом сайте.
+    Полноценная защита потребует переноса всех onclick на addEventListener
+    и вынесения инлайн-стилей — заметный рефакторинг фронтенда, не
+    делался в рамках этого прохода.
+    """
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+
+    # /docs и /redoc (Swagger UI / ReDoc) грузят свои JS/CSS с CDN
+    # (jsdelivr) — под нашим CSP они не откроются, поэтому не применяем
+    # его на этих путях.
+    if request.url.path not in ("/docs", "/redoc"):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "img-src 'self' data: blob:; "
+            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
+    return response
+
+
 # Подключаем статические файлы
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

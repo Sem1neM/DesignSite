@@ -53,6 +53,21 @@ export const DashboardPage = {
                         </div>
                     </div>
 
+                    <div class="card" style="margin-bottom:20px;">
+                        <div class="card-header">
+                            <span class="card-title">🤖 Telegram-бот</span>
+                        </div>
+                        <div id="telegramLinkBlock">
+                            ${user.telegram_id ? `
+                                <p style="margin:0;">✅ Telegram привязан — задачи и уведомления доступны в боте.</p>
+                            ` : `
+                                <p style="margin:0 0 12px;">Создавайте задачи и получайте уведомления прямо в Telegram.</p>
+                                <button class="btn btn-primary btn-sm" onclick="window.getTelegramLinkCode()">Получить код привязки</button>
+                                <div id="telegramCodeBox" style="margin-top:12px;"></div>
+                            `}
+                        </div>
+                    </div>
+
                     <div class="stats-grid" id="statsGrid">
                         <div class="stat-tile stat-hero"><div class="top-row"><span class="icon">📊</span></div><div class="n num" id="statTotal">0</div><div class="t">Всего задач</div></div>
                         <div class="stat-tile stat-new"><div class="top-row"><span class="icon">✨</span></div><div class="n num" id="statNew">0</div><div class="t">Новых</div></div>
@@ -173,5 +188,35 @@ export const DashboardPage = {
                 </div>
             `;
         }
+    }
+};
+
+window.getTelegramLinkCode = async function() {
+    const box = document.getElementById('telegramCodeBox');
+    if (!box) return;
+    box.textContent = 'Получаем код…';
+    try {
+        const token = store.get('token');
+        const res = await fetch('/api/v1/auth/telegram-link-code', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            box.textContent = '❌ ' + (err.detail || 'Не удалось получить код');
+            return;
+        }
+        const data = await res.json();
+        // data.code — 6 цифр, сгенерированных сервером (secrets.randbelow),
+        // безопасно вставлять напрямую.
+        box.innerHTML = `
+            <div style="font-size:1.6rem;font-weight:700;letter-spacing:4px;font-family:monospace;">${data.code}</div>
+            <div style="font-size:0.85rem;color:var(--ink-soft);margin-top:6px;">
+                В Telegram-боте отправьте: <code>/link ${data.code}</code><br>
+                Код действует ${data.expires_in_minutes} минут.
+            </div>
+        `;
+    } catch (e) {
+        box.textContent = '❌ Ошибка соединения';
     }
 };

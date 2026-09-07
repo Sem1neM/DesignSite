@@ -43,6 +43,12 @@ def update_user(
             detail="Нельзя изменить собственную роль"
         )
 
+    if user.id == current_user.id and user_data.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нельзя заблокировать самого себя"
+        )
+
     for field, value in user_data.dict(exclude_unset=True).items():
         setattr(user, field, value)
 

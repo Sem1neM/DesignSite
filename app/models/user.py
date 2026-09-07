@@ -22,6 +22,12 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     telegram_id = Column(String(100), unique=True, nullable=True)
     current_task_id = Column(Integer, nullable=True)
+    # Одноразовый код для привязки Telegram-аккаунта с сайта (см.
+    # POST /api/v1/auth/telegram-link-code и бот-команду /link). Пароль
+    # через бот больше не запрашивается — только код с уже
+    # аутентифицированной сессии на сайте.
+    telegram_link_code = Column(String(16), unique=True, nullable=True, index=True)
+    telegram_link_code_expires_at = Column(DateTime(timezone=True), nullable=True)
     # Добавить в класс User
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 

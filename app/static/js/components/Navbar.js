@@ -11,7 +11,9 @@ let isOpen = false;
 function getActiveTab() {
     const page = window.router?.getCurrentPage() || 'dashboard';
     const taskPages = ['tasks', 'task-detail', 'task-create', 'task-edit'];
-    return taskPages.includes(page) ? 'tasks' : 'dashboard';
+    if (taskPages.includes(page)) return 'tasks';
+    if (page === 'users') return 'users';
+    return 'dashboard';
 }
 
 // Обновление индикатора и активных классов
@@ -63,6 +65,7 @@ export const Navbar = {
                         <div class="pill-indicator" id="pillIndicator"></div>
                         <button data-target="dashboard" onclick="window.router.navigate('dashboard')">Кабинет</button>
                         <button data-target="tasks" onclick="window.router.navigate('tasks')">Задачи</button>
+                        ${user.role === 'admin' ? `<button data-target="users" onclick="window.router.navigate('users')">Пользователи</button>` : ''}
                     </div>
 
                     <div class="topbar-right">

@@ -74,13 +74,17 @@ def notify_task_updated(db: Session, task, user):
 
 def notify_task_status_changed(db: Session, task, old_status, new_status, user):
     """Уведомление об изменении статуса"""
+    # Ключи в нижнем регистре: вызывающий код (tasks.py) передаёт
+    # TaskStatus.value (например "in_progress"), а не .name — раньше
+    # ключи были в верхнем регистре и .get() всегда промахивался,
+    # уведомление показывало сырое значение статуса вместо подписи.
     status_labels = {
-        'NEW': 'Новая',
-        'CLARIFICATION': 'Уточнение',
-        'READY_FOR_REVIEW': 'Готово к проверке',
-        'IN_PROGRESS': 'В работе',
-        'COMPLETED': 'Завершено',
-        'REJECTED': 'Отклонено'
+        'new': 'Новая',
+        'clarification': 'Уточнение',
+        'ready_for_review': 'Готово к проверке',
+        'in_progress': 'В работе',
+        'completed': 'Завершено',
+        'rejected': 'Отклонено'
     }
 
     old_label = status_labels.get(old_status, old_status)

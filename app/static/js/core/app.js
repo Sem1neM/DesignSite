@@ -12,6 +12,7 @@ import { TaskDetailPage } from '../pages/TaskDetailPage.js';
 import { TaskEditPage } from '../pages/TaskEditPage.js';
 import { ForgotPasswordPage } from '../pages/ForgotPasswordPage.js';
 import { ResetPasswordPage } from '../pages/ResetPasswordPage.js';
+import { UsersPage } from '../pages/UsersPage.js';
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ФУНКЦИИ
@@ -108,6 +109,12 @@ router.register('task-edit', {
     requiresAuth: true
 });
 
+router.register('users', {
+    title: 'Пользователи',
+    render: UsersPage.render,
+    requiresAuth: true
+});
+
 // ============================================
 // ИНИЦИАЛИЗАЦИЯ
 // ============================================
@@ -164,7 +171,9 @@ router.navigate = function(page, params) {
     // После рендера обновляем пилл
     setTimeout(() => {
         if (window.updatePill) {
-            const activeTab = ['tasks', 'task-detail', 'task-create', 'task-edit'].includes(page) ? 'tasks' : 'dashboard';
+            let activeTab = 'dashboard';
+            if (['tasks', 'task-detail', 'task-create', 'task-edit'].includes(page)) activeTab = 'tasks';
+            else if (page === 'users') activeTab = 'users';
             window.updatePill(activeTab);
         }
     }, 50);

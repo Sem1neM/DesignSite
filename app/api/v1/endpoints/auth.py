@@ -93,6 +93,29 @@ from datetime import datetime, timedelta
 import secrets
 from app.models.password_reset import PasswordResetToken
 from app.core.security import hash_password
+from app.api.v1.dependencies import get_current_active_user
+
+
+@router.post("/telegram-link-code", dependencies=[Depends(rate_limit(10, 3600))])
+def create_telegram_link_code(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    """
+    Генерирует одноразовый код для привязки Telegram-аккаунта.
+    Пользователь отправляет его боту командой /link <код>.
+    Пароль в Telegram никогда не вводится — привязка возможна только
+    из уже аутентифицированной сессии на сайте.
+    """
+    for _ in range(5):
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        if not db.query(User).filter(User.telegram_link_code == code).first():
+            break
+    current_user.telegram_link_code = code
+    current_user.telegram_link_code_expires_at = datetime.utcnow() + timedelta(minutes=10)
+    db.commit()
+
+    return {"code": code, "expires_in_minutes": 10}
 
 
 @router.post("/forgot-password", dependencies=[Depends(rate_limit(5, 3600))])
