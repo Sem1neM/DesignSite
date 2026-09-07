@@ -7,6 +7,8 @@ import enum
 
 class MessageSender(str, enum.Enum):
     CLIENT = "client"
+    DESIGNER = "designer"
+    ADMIN = "admin"
     AGENT = "agent"
     SYSTEM = "system"
 

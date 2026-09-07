@@ -2,6 +2,7 @@
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
 import { Navbar } from '../components/Navbar.js';
+import { helpers } from '../utils/helpers.js';
 
 export const DashboardPage = {
     tasksCount: 0,
@@ -21,9 +22,9 @@ export const DashboardPage = {
                     <div class="hero-row">
                         <div class="card welcome-card">
                             <div class="kicker">С возвращением 👋</div>
-                            <h1>Привет, ${user.full_name}!</h1>
+                            <h1>Привет, ${helpers.escapeHtml(user.full_name)}!</h1>
                             <div class="info-grid">
-                                <div class="info-item"><div class="label">Email</div><div class="value">${user.email}</div></div>
+                                <div class="info-item"><div class="label">Email</div><div class="value">${helpers.escapeHtml(user.email)}</div></div>
                                 <div class="info-item"><div class="label">Роль</div><div class="value">${user.role === 'client' ? 'Байер' : user.role === 'designer' ? 'Дизайнер' : 'Админ'}</div></div>
                             </div>
                             <div class="btn-row">
@@ -143,7 +144,7 @@ export const DashboardPage = {
                         <div class="feed-item">
                             <div class="feed-ico" style="background:var(--violet-soft);">${icon}</div>
                             <div>
-                                <div class="feed-text">${n.title}: ${n.message}</div>
+                                <div class="feed-text">${helpers.escapeHtml(n.title)}: ${helpers.escapeHtml(n.message)}</div>
                                 <div class="feed-time">${new Date(n.created_at).toLocaleString()}</div>
                             </div>
                         </div>

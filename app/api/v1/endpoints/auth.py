@@ -9,6 +9,7 @@ from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserLogin, Token, UserOut
 from app.core.config import settings
 from app.api.v1.dependencies import get_current_user  # <-- ДОБАВИТЬ ЭТОТ ИМПОРТ
+from app.core.rate_limit import rate_limit
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
-@router.post("/register", response_model=Token)
+@router.post("/register", response_model=Token, dependencies=[Depends(rate_limit(5, 3600))])
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """
     Регистрация нового пользователя
@@ -29,13 +30,16 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
 
-    # Создание пользователя
+    # Создание пользователя.
+    # Роль назначается ТОЛЬКО как CLIENT — значение role из запроса
+    # игнорируется, иначе любой мог бы зарегистрироваться администратором.
+    # Повышение роли (designer/admin) — отдельная операция для админа.
     hashed_password = hash_password(user_data.password)
     new_user = User(
         email=user_data.email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
-        role=user_data.role or UserRole.CLIENT
+        role=UserRole.CLIENT
     )
     db.add(new_user)
     db.commit()
@@ -49,7 +53,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Token, dependencies=[Depends(rate_limit(10, 60))])
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """
     Вход в систему. Используйте email как username.
@@ -91,7 +95,7 @@ from app.models.password_reset import PasswordResetToken
 from app.core.security import hash_password
 
 
-@router.post("/forgot-password")
+@router.post("/forgot-password", dependencies=[Depends(rate_limit(5, 3600))])
 def forgot_password(email: str, db: Session = Depends(get_db)):
     """
     Запрос на восстановление пароля.

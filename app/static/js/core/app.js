@@ -30,10 +30,16 @@ window.showAlert = function(message, type) {
         info: 'alert-info',
         warning: 'alert-warning'
     };
-    container.innerHTML = '<div class="alert ' + (types[type] || types.info) + '">' + message + '</div>';
+    // textContent, а не innerHTML — message нередко содержит данные,
+    // введённые пользователем (например, имя загружаемого файла).
+    container.textContent = '';
+    var alertEl = document.createElement('div');
+    alertEl.className = 'alert ' + (types[type] || types.info);
+    alertEl.textContent = message;
+    container.appendChild(alertEl);
     clearTimeout(window._alertTimeout);
     window._alertTimeout = setTimeout(function() {
-        if (container) container.innerHTML = '';
+        if (container) container.textContent = '';
     }, 5000);
 };
 
@@ -150,6 +156,10 @@ async function initApp() {
 // Сохраняем оригинальный navigate для обновления пилла
 const originalNavigate = router.navigate.bind(router);
 router.navigate = function(page, params) {
+    // Закрываем сокет чата задачи при уходе со страницы задачи
+    if (page !== 'task-detail' && window.closeChatSocket) {
+        window.closeChatSocket();
+    }
     originalNavigate(page, params);
     // После рендера обновляем пилл
     setTimeout(() => {

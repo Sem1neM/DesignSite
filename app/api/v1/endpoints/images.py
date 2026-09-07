@@ -32,6 +32,19 @@ def format_file_size(size: int) -> str:
         return f"{size / (1024 * 1024 * 1024):.2f} GB"
 
 
+# Соответствие формата, определённого Pillow по содержимому файла,
+# разрешённому MIME-типу. Используется вместо Content-Type из запроса
+# (который клиент может подделать) и вместо расширения имени файла.
+PIL_FORMAT_TO_MIME = {
+    "JPEG": "image/jpeg",
+    "PNG": "image/png",
+    "GIF": "image/gif",
+    "WEBP": "image/webp",
+    "BMP": "image/bmp",
+    "TIFF": "image/tiff",
+}
+
+
 def validate_file(file: UploadFile) -> tuple[str, str, bytes, dict]:
     content = file.file.read()
     file.file.seek(0)
@@ -51,16 +64,27 @@ def validate_file(file: UploadFile) -> tuple[str, str, bytes, dict]:
             detail=f"Тип файла не поддерживается. Разрешённые форматы: {', '.join(settings.ALLOWED_EXTENSIONS)}"
         )
 
-    content_type = file.content_type or "image/unknown"
-
-    width = None
-    height = None
+    # Проверяем реальное содержимое файла — Content-Type из запроса и
+    # расширение имени файла полностью контролируются клиентом и не
+    # являются доказательством того, что внутри действительно изображение.
     try:
-        if content_type.startswith('image/') and content_type != 'image/svg+xml':
-            img = Image.open(io.BytesIO(content))
-            width, height = img.size
+        probe = Image.open(io.BytesIO(content))
+        probe.verify()
+        img = Image.open(io.BytesIO(content))
+        width, height = img.size
+        detected_format = img.format
     except Exception:
-        pass
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Файл повреждён или не является поддерживаемым изображением"
+        )
+
+    content_type = PIL_FORMAT_TO_MIME.get(detected_format)
+    if content_type not in settings.ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Тип файла не поддерживается"
+        )
 
     return ext, content_type, content, {"width": width, "height": height}
 
@@ -205,7 +229,8 @@ async def get_image(
         media_type=image.mime_type,
         headers={
             "Content-Disposition": f"inline; filename=\"{encoded_filename}\"; filename*=UTF-8''{encoded_filename}",
-            "Content-Length": str(image.file_size)
+            "Content-Length": str(image.file_size),
+            "X-Content-Type-Options": "nosniff"
         }
     )
 

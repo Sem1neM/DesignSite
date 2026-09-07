@@ -2,6 +2,7 @@
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
 import { Navbar } from '../components/Navbar.js';
+import { helpers } from '../utils/helpers.js';
 
 // ============================================
 // СТАТУСЫ НА РУССКОМ
@@ -109,7 +110,7 @@ export const TaskDetailPage = {
                     <div class="file-chip">
                         <div class="file-thumb" style="background:url('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}') center/cover;"></div>
                         <div class="file-info">
-                            <div class="fn" title="${img.filename}">${img.filename}</div>
+                            <div class="fn" title="${helpers.escapeHtml(img.filename)}">${helpers.escapeHtml(img.filename)}</div>
                             <div class="fs">${formatFileSize(img.file_size)}</div>
                         </div>
                         <button class="btn btn-ghost btn-sm" onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}', '_blank')">👁️</button>
@@ -156,23 +157,16 @@ export const TaskDetailPage = {
             stepperHtml += '</div>';
 
             // ============================================
-            // ЧАТ
+            // ЧАТ (реальный WebSocket)
             // ============================================
-            // Для чата будем использовать заглушку, реальный WebSocket будет позже
             const chatHtml = `
                 <div class="panel chat-panel">
                     <h3>💬 Чат по задаче</h3>
                     <div class="chat-thread" id="chatThread">
-                        <div class="msg">
-                            <div class="mavatar" style="background:linear-gradient(135deg,var(--blue),var(--violet));">${user.full_name.charAt(0)}</div>
-                            <div>
-                                <div class="bubble">Здесь будут сообщения с ИИ-агентом и дизайнером</div>
-                                <div class="time">Подключите WebSocket</div>
-                            </div>
-                        </div>
+                        <div class="chat-status" style="opacity:.6;font-size:13px;padding:8px 0;">Подключение к чату…</div>
                     </div>
                     <div class="chat-input-row">
-                        <input type="text" id="chatInput" placeholder="Написать сообщение…">
+                        <input type="text" id="chatInput" placeholder="Написать сообщение…" onkeydown="if(event.key==='Enter'){event.preventDefault();sendChatMessage(${task.id});}">
                         <button class="send-btn" onclick="sendChatMessage(${task.id})">
                             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 12l16-8-6 16-3-7-7-1z" stroke="white" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>
                         </button>
@@ -221,7 +215,7 @@ export const TaskDetailPage = {
                 <div class="side-row">
                     <div class="upload-zone">
                         <b onclick="document.getElementById('imageInput').click()">Выбрать файл</b> или перетащите сюда<br>
-                        JPG, PNG, GIF, WEBP, SVG, BMP, TIFF · до 50 МБ
+                        JPG, PNG, GIF, WEBP, BMP, TIFF · до 50 МБ
                         <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="uploadImageToTask(${task.id})">
                     </div>
                 </div>
@@ -244,7 +238,7 @@ export const TaskDetailPage = {
                 </div>
 
                 <div class="task-heading">
-                    <h1>${task.title}</h1>
+                    <h1>${helpers.escapeHtml(task.title)}</h1>
                     <span class="status-chip ${statusClass}">${statusText}</span>
                 </div>
 
@@ -254,18 +248,21 @@ export const TaskDetailPage = {
                     <div class="task-main">
                         <div class="panel">
                             <h3>📝 Описание</h3>
-                            <p class="desc-text">${task.description || 'Нет описания'}</p>
+                            <p class="desc-text">${helpers.escapeHtml(task.description) || 'Нет описания'}</p>
                             ${task.clarified_description ? `
                                 <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line);">
                                     <h3>🤖 Уточнённое ТЗ (ИИ)</h3>
-                                    <p class="desc-text">${task.clarified_description}</p>
+                                    <p class="desc-text">${helpers.escapeHtml(task.clarified_description)}</p>
                                 </div>
                             ` : ''}
-                            ${task.preferred_style ? `<div style="margin-top:12px;"><strong>Стиль:</strong> ${task.preferred_style}</div>` : ''}
+                            ${task.preferred_style ? `<div style="margin-top:12px;"><strong>Стиль:</strong> ${helpers.escapeHtml(task.preferred_style)}</div>` : ''}
                             ${task.references && task.references.length ? `
                                 <div style="margin-top:12px;">
                                     <strong>Референсы (ссылки):</strong>
-                                    ${task.references.map(ref => `<a href="${ref}" target="_blank" style="color:var(--violet);display:block;">${ref}</a>`).join('')}
+                                    ${task.references
+                                        .filter(ref => /^https?:\/\//i.test(ref))
+                                        .map(ref => `<a href="${helpers.escapeHtml(ref)}" target="_blank" rel="noopener noreferrer" style="color:var(--violet);display:block;">${helpers.escapeHtml(ref)}</a>`)
+                                        .join('')}
                                 </div>
                             ` : ''}
                         </div>
@@ -313,6 +310,8 @@ export const TaskDetailPage = {
                     </div>
                 </div>
             `;
+
+            connectChatSocket(task.id, user);
 
         } catch (error) {
             console.error('❌ Fetch error:', error);
@@ -442,27 +441,99 @@ window.downloadAllImages = async function(taskId) {
     }
 };
 
-// Отправка сообщения в чат (заглушка)
-window.sendChatMessage = function(taskId) {
-    const input = document.getElementById('chatInput');
-    if (!input || !input.value.trim()) return;
-    const msg = input.value.trim();
+// ============================================
+// ЧАТ: WebSocket
+// ============================================
+const SENDER_LABEL = {
+    client: 'Клиент',
+    designer: 'Дизайнер',
+    admin: 'Админ',
+    agent: '🤖 ИИ-агент',
+    system: 'Система'
+};
+
+let chatSocket = null;
+let chatSocketTaskId = null;
+
+function appendChatMessage(msg) {
     const thread = document.getElementById('chatThread');
+    if (!thread) return;
+    const loading = thread.querySelector('.chat-status');
+    if (loading) loading.remove();
+
+    const currentUser = store.get('user');
+    const isOwn = currentUser && msg.sender === currentUser.role;
+    const label = SENDER_LABEL[msg.sender] || msg.sender;
+    const avatarText = { agent: '🤖', system: '⚙️' }[msg.sender] || label.charAt(0);
+    const time = msg.created_at
+        ? new Date(msg.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '';
+
     const div = document.createElement('div');
-    div.className = 'msg me';
-    const user = store.get('user');
-    const initials = user.full_name.split(' ').map(n => n[0]).join('').toUpperCase();
+    div.className = 'msg' + (isOwn ? ' me' : '');
     div.innerHTML = `
-        <div class="mavatar" style="background:linear-gradient(135deg,var(--violet),var(--pink));">${initials}</div>
+        <div class="mavatar" style="background:linear-gradient(135deg,var(--violet),var(--pink));">${helpers.escapeHtml(avatarText)}</div>
         <div>
-            <div class="bubble">${msg}</div>
-            <div class="time">Вы · только что</div>
+            <div class="bubble">${helpers.escapeHtml(msg.content)}</div>
+            <div class="time">${helpers.escapeHtml(label)} · ${time}</div>
         </div>
     `;
     thread.appendChild(div);
     thread.scrollTop = thread.scrollHeight;
+}
+
+function connectChatSocket(taskId, user) {
+    if (chatSocket && chatSocketTaskId === taskId && chatSocket.readyState <= WebSocket.OPEN) {
+        return;
+    }
+    window.closeChatSocket();
+
+    const token = store.get('token');
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const socket = new WebSocket(`${proto}://${location.host}/ws/${taskId}?token=${encodeURIComponent(token)}`);
+    chatSocket = socket;
+    chatSocketTaskId = taskId;
+
+    socket.onmessage = (event) => {
+        let data;
+        try {
+            data = JSON.parse(event.data);
+        } catch (e) {
+            return;
+        }
+        if (data.type === 'history' || data.type === 'message') {
+            appendChatMessage(data);
+        }
+    };
+
+    socket.onerror = () => {
+        const thread = document.getElementById('chatThread');
+        if (thread) {
+            const status = thread.querySelector('.chat-status');
+            if (status) status.textContent = 'Не удалось подключиться к чату';
+        }
+    };
+}
+
+window.closeChatSocket = function() {
+    if (chatSocket) {
+        chatSocket.onmessage = null;
+        chatSocket.onerror = null;
+        chatSocket.close();
+    }
+    chatSocket = null;
+    chatSocketTaskId = null;
+};
+
+window.sendChatMessage = function(taskId) {
+    const input = document.getElementById('chatInput');
+    if (!input || !input.value.trim()) return;
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+        window.showAlert('❌ Нет соединения с чатом, подождите или перезагрузите страницу', 'error');
+        return;
+    }
+    chatSocket.send(JSON.stringify({ content: input.value.trim() }));
     input.value = '';
-    // Здесь можно отправить сообщение в WebSocket
 };
 
 // Удаление задачи

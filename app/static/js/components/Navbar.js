@@ -1,6 +1,7 @@
 // components/Navbar.js
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
+import { helpers } from '../utils/helpers.js';
 
 let notifications = [];
 let unreadCount = 0;
@@ -81,7 +82,7 @@ export const Navbar = {
                         <div class="user-chip">
                             <div class="avatar">${initials}</div>
                             <div class="user-meta">
-                                <div class="name">${user.full_name}</div>
+                                <div class="name">${helpers.escapeHtml(user.full_name)}</div>
                                 <span class="role-badge ${roleClass}">${roleLabel}</span>
                             </div>
                         </div>
@@ -134,8 +135,8 @@ window.renderNotificationList = function() {
         const taskId = link.split('/').pop();
         html += `
             <div onclick="window.markAsRead(${n.id})" style="padding:12px 16px;border-bottom:1px solid #e8e4f6;cursor:pointer;${!isRead ? 'background:#f0f4ff;border-left:3px solid #6C4EFF;' : ''}">
-                <div style="font-weight:${!isRead ? '700' : '400'};font-size:0.85rem;">${n.title}</div>
-                <div style="font-size:0.8rem;color:#6C6980;margin-top:4px;">${n.message}</div>
+                <div style="font-weight:${!isRead ? '700' : '400'};font-size:0.85rem;">${helpers.escapeHtml(n.title)}</div>
+                <div style="font-size:0.8rem;color:#6C6980;margin-top:4px;">${helpers.escapeHtml(n.message)}</div>
                 <div style="font-size:0.65rem;color:#a6a2be;margin-top:4px;">
                     ${new Date(n.created_at).toLocaleString()}
                     ${taskId ? ` • <a href="#" onclick="event.stopPropagation();window.router.navigate('task-detail',{id:${taskId}});window.toggleNotifications();" style="color:#6C4EFF;">Подробнее</a>` : ''}
