@@ -3,6 +3,7 @@ import { store } from '../core/store.js';
 import { router } from '../core/router.js';
 import { Navbar } from '../components/Navbar.js';
 import { helpers } from '../utils/helpers.js';
+import { getMediaToken } from '../core/mediaToken.js';
 
 // ============================================
 // СТАТУСЫ НА РУССКОМ
@@ -94,6 +95,11 @@ export const TaskDetailPage = {
                 images = await imagesResponse.json();
             }
 
+            // Отдельный короткоживущий токен для <img>/window.open — их
+            // нельзя открыть с заголовком Authorization, поэтому вместо
+            // основного access-токена в URL идёт media-токен.
+            const mediaToken = images.length > 0 ? await getMediaToken() : null;
+
             const statusText = getStatusText(task.status);
             const statusClass = getStatusClass(task.status);
 
@@ -108,12 +114,12 @@ export const TaskDetailPage = {
             if (images.length > 0) {
                 const imagesItems = images.map(img => `
                     <div class="file-chip">
-                        <div class="file-thumb" style="background:url('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}') center/cover;"></div>
+                        <div class="file-thumb" style="background:url('/api/v1/images/${img.id}?token=${encodeURIComponent(mediaToken)}') center/cover;"></div>
                         <div class="file-info">
                             <div class="fn" title="${helpers.escapeHtml(img.filename)}">${helpers.escapeHtml(img.filename)}</div>
                             <div class="fs">${formatFileSize(img.file_size)}</div>
                         </div>
-                        <button class="btn btn-ghost btn-sm" onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}', '_blank')">👁️</button>
+                        <button class="btn btn-ghost btn-sm" onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(mediaToken)}', '_blank')">👁️</button>
                         ${(isClient || isAdmin) ? `<button class="btn btn-ghost btn-sm" onclick="deleteImage(${img.id}, ${taskId})">✕</button>` : ''}
                     </div>
                 `).join('');
@@ -424,10 +430,11 @@ window.downloadAllImages = async function(taskId) {
         }
         // Скачиваем по одному
         window.showAlert(`⏳ Скачивание ${images.length} изображений...`, 'info');
+        const mediaToken = await getMediaToken();
         let downloaded = 0;
         for (const img of images) {
             const link = document.createElement('a');
-            link.href = `/api/v1/images/${img.id}?token=${encodeURIComponent(token)}`;
+            link.href = `/api/v1/images/${img.id}?token=${encodeURIComponent(mediaToken)}`;
             link.download = img.filename;
             document.body.appendChild(link);
             link.click();
@@ -482,15 +489,23 @@ function appendChatMessage(msg) {
     thread.scrollTop = thread.scrollHeight;
 }
 
-function connectChatSocket(taskId, user) {
+async function connectChatSocket(taskId, user) {
     if (chatSocket && chatSocketTaskId === taskId && chatSocket.readyState <= WebSocket.OPEN) {
         return;
     }
     window.closeChatSocket();
 
-    const token = store.get('token');
+    let mediaToken;
+    try {
+        mediaToken = await getMediaToken();
+    } catch (e) {
+        const thread = document.getElementById('chatThread');
+        if (thread) thread.innerHTML = '<div class="chat-status" style="opacity:.6;font-size:13px;padding:8px 0;">Не удалось подключиться к чату</div>';
+        return;
+    }
+
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const socket = new WebSocket(`${proto}://${location.host}/ws/${taskId}?token=${encodeURIComponent(token)}`);
+    const socket = new WebSocket(`${proto}://${location.host}/ws/${taskId}?token=${encodeURIComponent(mediaToken)}`);
     chatSocket = socket;
     chatSocketTaskId = taskId;
 

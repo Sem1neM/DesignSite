@@ -13,6 +13,7 @@ import { TaskEditPage } from '../pages/TaskEditPage.js';
 import { ForgotPasswordPage } from '../pages/ForgotPasswordPage.js';
 import { ResetPasswordPage } from '../pages/ResetPasswordPage.js';
 import { UsersPage } from '../pages/UsersPage.js';
+import { clearMediaToken } from './mediaToken.js';
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ФУНКЦИИ
@@ -46,6 +47,7 @@ window.showAlert = function(message, type) {
 
 window.logout = function() {
     store.clear();
+    clearMediaToken();
     window.router.navigate('login');
 };
 

@@ -15,10 +15,23 @@ from app.models.task import Task
 from app.models.image import TaskImage
 from app.models.user import User
 from app.api.v1.dependencies import get_current_user, get_current_active_user
-from app.core.security import decode_token
+from app.core.security import decode_token, create_media_token
 from app.schemas.image import ImageOut, ImageUploadResponse
 
 router = APIRouter(prefix="/images", tags=["Images"])
+
+
+@router.get("/media-token")
+def get_media_token(current_user: User = Depends(get_current_active_user)):
+    """
+    Короткоживущий токен для URL картинок и WebSocket-чата — используется
+    вместо основного access-токена там, где Authorization-заголовок
+    поставить нельзя (<img src>, WebSocket). См. create_media_token.
+    """
+    return {
+        "token": create_media_token(current_user.id),
+        "expires_in_minutes": 10
+    }
 
 
 def format_file_size(size: int) -> str:

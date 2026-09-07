@@ -29,6 +29,12 @@ def get_current_user(
         if payload is None:
             raise credentials_exception
 
+        # Токены с scope="media" (см. create_media_token) годятся только
+        # для картинок/WebSocket и не должны работать как обычный
+        # access-токен на остальном API.
+        if payload.get("scope") == "media":
+            raise credentials_exception
+
         user_id = payload.get("sub")
         if user_id is None:
             raise credentials_exception

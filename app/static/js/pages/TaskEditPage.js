@@ -3,6 +3,7 @@ import { store } from '../core/store.js';
 import { router } from '../core/router.js';
 import { Navbar } from '../components/Navbar.js';
 import { helpers } from '../utils/helpers.js';
+import { getMediaToken } from '../core/mediaToken.js';
 
 let editTaskId = null;
 let editUploadedImages = [];
@@ -68,6 +69,10 @@ async function loadEditTask() {
             existingImages = await imagesResponse.json();
         }
 
+        // Отдельный короткоживущий токен для <img>/window.open — их нельзя
+        // открыть с заголовком Authorization.
+        const mediaToken = existingImages.length > 0 ? await getMediaToken() : null;
+
         let imagesHtml = '';
         if (existingImages.length > 0) {
             imagesHtml = `
@@ -76,8 +81,8 @@ async function loadEditTask() {
                     <div class="image-grid">
                         ${existingImages.map(img => `
                             <div class="image-card">
-                                <img src="/api/v1/images/${img.id}?token=${encodeURIComponent(token)}" alt="${helpers.escapeHtml(img.filename)}"
-                                     onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}', '_blank')"
+                                <img src="/api/v1/images/${img.id}?token=${encodeURIComponent(mediaToken)}" alt="${helpers.escapeHtml(img.filename)}"
+                                     onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(mediaToken)}', '_blank')"
                                      onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23f0f2f5%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23a0aec0%22 font-family=%22Arial%22 font-size=%2214%22%3EОшибка%3C/text%3E%3C/svg%3E'">
                                 <button class="delete-btn" onclick="deleteExistingImage(${img.id})">✕</button>
                                 <div class="image-info">
