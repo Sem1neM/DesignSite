@@ -2,6 +2,7 @@
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
 import { Navbar } from '../components/Navbar.js';
+import { helpers } from '../utils/helpers.js';
 
 const statusMap = {
     'new': 'Новая',
@@ -148,7 +149,7 @@ export const TasksPage = {
             html += `
                 <div class="task-card ${borderClass}" onclick="window.router.navigate('task-detail', {id: ${task.id}})">
                     <div class="task-main-col">
-                        <div class="task-title">${task.title}</div>
+                        <div class="task-title">${helpers.escapeHtml(task.title)}</div>
                         <div class="task-meta">
                             <span>🆔 #${task.id}</span>
                             <span>📅 ${new Date(task.created_at).toLocaleDateString()}</span>

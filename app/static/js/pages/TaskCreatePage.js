@@ -2,6 +2,7 @@
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
 import { Navbar } from '../components/Navbar.js';
+import { helpers } from '../utils/helpers.js';
 
 export const TaskCreatePage = {
     uploadedImages: [],
@@ -51,7 +52,7 @@ export const TaskCreatePage = {
                                         <button type="button" class="btn btn-primary btn-sm" onclick="addImageToTask()">📤 Добавить</button>
                                     </div>
                                 </div>
-                                <div style="font-size:0.8rem;color:var(--ink-soft);margin-top:4px;">Максимум: 50 МБ на файл. JPG, PNG, GIF, WEBP, SVG, BMP, TIFF</div>
+                                <div style="font-size:0.8rem;color:var(--ink-soft);margin-top:4px;">Максимум: 50 МБ на файл. JPG, PNG, GIF, WEBP, BMP, TIFF</div>
                                 <div id="taskImagesPreview" style="margin-top:12px;">
                                     <div class="image-preview-empty"><div class="icon">🖼️</div><div class="title">Нет загруженных изображений</div></div>
                                 </div>
@@ -171,9 +172,9 @@ export const TaskCreatePage = {
             const f = this.uploadedImages[i];
             html += `
                 <div class="image-preview-item">
-                    <img src="${URL.createObjectURL(f)}" alt="${f.name}">
+                    <img src="${URL.createObjectURL(f)}" alt="${helpers.escapeHtml(f.name)}">
                     <button type="button" class="remove-btn" onclick="window.removeImageFromTask(${i})">✕</button>
-                    <div class="file-info"><div class="name">${f.name}</div><div class="size">${(f.size/1024).toFixed(1)} KB</div></div>
+                    <div class="file-info"><div class="name">${helpers.escapeHtml(f.name)}</div><div class="size">${(f.size/1024).toFixed(1)} KB</div></div>
                 </div>
             `;
         }

@@ -2,6 +2,7 @@
 import { store } from '../core/store.js';
 import { router } from '../core/router.js';
 import { Navbar } from '../components/Navbar.js';
+import { helpers } from '../utils/helpers.js';
 
 let editTaskId = null;
 let editUploadedImages = [];
@@ -75,12 +76,12 @@ async function loadEditTask() {
                     <div class="image-grid">
                         ${existingImages.map(img => `
                             <div class="image-card">
-                                <img src="/api/v1/images/${img.id}?token=${encodeURIComponent(token)}" alt="${img.filename}"
+                                <img src="/api/v1/images/${img.id}?token=${encodeURIComponent(token)}" alt="${helpers.escapeHtml(img.filename)}"
                                      onclick="window.open('/api/v1/images/${img.id}?token=${encodeURIComponent(token)}', '_blank')"
                                      onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23f0f2f5%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23a0aec0%22 font-family=%22Arial%22 font-size=%2214%22%3EОшибка%3C/text%3E%3C/svg%3E'">
                                 <button class="delete-btn" onclick="deleteExistingImage(${img.id})">✕</button>
                                 <div class="image-info">
-                                    <div class="filename" title="${img.filename}">${img.filename}</div>
+                                    <div class="filename" title="${helpers.escapeHtml(img.filename)}">${helpers.escapeHtml(img.filename)}</div>
                                     <div class="meta">
                                         <span>📦 ${formatFileSize(img.file_size)}</span>
                                     </div>
@@ -101,19 +102,19 @@ async function loadEditTask() {
                 <form id="editTaskForm">
                     <div class="form-group">
                         <label>Название *</label>
-                        <input type="text" id="editTitle" class="form-control" value="${task.title}" required>
+                        <input type="text" id="editTitle" class="form-control" value="${helpers.escapeHtml(task.title)}" required>
                     </div>
                     <div class="form-group">
                         <label>Описание</label>
-                        <textarea id="editDescription" class="form-control" rows="4">${task.description || ''}</textarea>
+                        <textarea id="editDescription" class="form-control" rows="4">${helpers.escapeHtml(task.description)}</textarea>
                     </div>
                     <div class="form-group">
                         <label>Предпочтительный стиль</label>
-                        <input type="text" id="editStyle" class="form-control" value="${task.preferred_style || ''}">
+                        <input type="text" id="editStyle" class="form-control" value="${helpers.escapeHtml(task.preferred_style)}">
                     </div>
                     <div class="form-group">
                         <label>Референсы (ссылки через запятую)</label>
-                        <input type="text" id="editReferences" class="form-control" value="${(task.references || []).join(', ')}">
+                        <input type="text" id="editReferences" class="form-control" value="${helpers.escapeHtml((task.references || []).join(', '))}">
                     </div>
 
                     <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
@@ -125,7 +126,7 @@ async function loadEditTask() {
                             </div>
                         </div>
                         <div style="font-size: 0.8rem; color: #a0aec0; margin-bottom: 12px;">
-                            ⚡ Максимальный размер: 50 МБ на файл. Поддерживаемые форматы: JPG, PNG, GIF, WEBP, SVG, BMP, TIFF
+                            ⚡ Максимальный размер: 50 МБ на файл. Поддерживаемые форматы: JPG, PNG, GIF, WEBP, BMP, TIFF
                         </div>
 
                         ${imagesHtml}
@@ -263,7 +264,7 @@ function addEditImage() {
             window.showAlert('❌ Файл "' + file.name + '" слишком большой. Максимум: 50 МБ', 'error');
             continue;
         }
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff'];
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
         if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
             window.showAlert('❌ Файл "' + file.name + '" имеет неподдерживаемый формат.', 'error');
             continue;
@@ -311,10 +312,10 @@ function updateEditPreview() {
         const file = editUploadedImages[i];
         html += `
             <div class="image-preview-item">
-                <img src="${URL.createObjectURL(file)}" alt="${file.name}">
+                <img src="${URL.createObjectURL(file)}" alt="${helpers.escapeHtml(file.name)}">
                 <button type="button" class="remove-btn" onclick="removeEditImage(${i})">✕</button>
                 <div class="file-info">
-                    <div class="name" title="${file.name}">${file.name}</div>
+                    <div class="name" title="${helpers.escapeHtml(file.name)}">${helpers.escapeHtml(file.name)}</div>
                     <div class="size">${(file.size / 1024).toFixed(1)} KB</div>
                 </div>
             </div>

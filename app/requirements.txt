@@ -27,6 +27,9 @@ jinja2==3.1.4
 email-validator==2.2.0
 cryptography==42.0.8
 
+# Images (проверка содержимого загружаемых файлов)
+Pillow==11.0.0
+
 # AI (для этапа 5)
 openai==1.55.3
 

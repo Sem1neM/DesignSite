@@ -1,5 +1,18 @@
 // utils/helpers.js
 export const helpers = {
+    // Экранирование пользовательского текста перед вставкой в innerHTML.
+    // Обязательно для любых данных, пришедших с сервера/от других
+    // пользователей (title, description, чат и т.д.) — иначе XSS.
+    escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    },
+
     // Форматирование даты
     formatDate(dateStr) {
         if (!dateStr) return '—';

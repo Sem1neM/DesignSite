@@ -1,14 +1,25 @@
 from fastapi import WebSocket, WebSocketDisconnect, status, APIRouter
-from sqlalchemy.orm import Session
+import asyncio
 import json
-import threading
+import logging
+
 from app.core.database import SessionLocal
 from app.models.user import User
 from app.models.task import Task
 from app.models.message import ChatMessage, MessageSender
 from app.core.security import decode_token
+from app.services.agent import process_user_message_sync
+
+logger = logging.getLogger(__name__)
 
 ws_router = APIRouter()
+
+ROLE_TO_SENDER = {
+    "client": MessageSender.CLIENT,
+    "designer": MessageSender.DESIGNER,
+    "admin": MessageSender.ADMIN,
+}
+
 
 class ConnectionManager:
     def __init__(self):
@@ -16,25 +27,25 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, task_id: int):
         await websocket.accept()
-        if task_id not in self.active_connections:
-            self.active_connections[task_id] = []
-        self.active_connections[task_id].append(websocket)
+        self.active_connections.setdefault(task_id, []).append(websocket)
 
     def disconnect(self, websocket: WebSocket, task_id: int):
         if task_id in self.active_connections:
-            self.active_connections[task_id].remove(websocket)
+            if websocket in self.active_connections[task_id]:
+                self.active_connections[task_id].remove(websocket)
             if not self.active_connections[task_id]:
                 del self.active_connections[task_id]
 
-    async def send_message(self, task_id: int, message: dict):
-        if task_id in self.active_connections:
-            for connection in self.active_connections[task_id]:
-                try:
-                    await connection.send_json(message)
-                except:
-                    pass
+    async def broadcast(self, task_id: int, message: dict):
+        for connection in list(self.active_connections.get(task_id, [])):
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
+
 
 manager = ConnectionManager()
+
 
 async def get_user_from_token(token: str) -> User | None:
     payload = decode_token(token)
@@ -45,10 +56,20 @@ async def get_user_from_token(token: str) -> User | None:
         return None
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == int(user_id)).first()
-        return user
+        return db.query(User).filter(User.id == int(user_id)).first()
     finally:
         db.close()
+
+
+def _message_payload(msg: ChatMessage) -> dict:
+    return {
+        "type": "message",
+        "id": msg.id,
+        "sender": msg.sender.value,
+        "content": msg.content,
+        "created_at": msg.created_at.isoformat(),
+    }
+
 
 @ws_router.websocket("/ws/{task_id}")
 async def websocket_endpoint(
@@ -71,26 +92,25 @@ async def websocket_endpoint(
         if not task:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-        if user.role != "admin" and task.client_id != user.id:
+        # Доступ к чату задачи: её клиент, назначенный/любой дизайнер, админ.
+        if user.role == "client" and task.client_id != user.id:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
     finally:
         db.close()
 
+    sender_type = ROLE_TO_SENDER.get(user.role.value)
+    if sender_type is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await manager.connect(websocket, task_id)
 
-    # Отправляем историю сообщений
     db = SessionLocal()
     try:
         messages = db.query(ChatMessage).filter(ChatMessage.task_id == task_id).order_by(ChatMessage.created_at).all()
         for msg in messages:
-            await websocket.send_json({
-                "type": "history",
-                "id": msg.id,
-                "sender": msg.sender.value,
-                "content": msg.content,
-                "created_at": msg.created_at.isoformat()
-            })
+            await websocket.send_json({**_message_payload(msg), "type": "history"})
     finally:
         db.close()
 
@@ -99,46 +119,48 @@ async def websocket_endpoint(
             data = await websocket.receive_text()
             try:
                 msg_data = json.loads(data)
-                content = msg_data.get("content", "").strip()
-                if not content:
-                    continue
-
-                # Сохраняем сообщение клиента
-                db = SessionLocal()
-                try:
-                    new_msg = ChatMessage(
-                        task_id=task_id,
-                        sender=MessageSender.CLIENT,
-                        content=content
-                    )
-                    db.add(new_msg)
-                    db.commit()
-                    db.refresh(new_msg)
-                finally:
-                    db.close()
-
-                # Отправляем подтверждение
-                await websocket.send_json({
-                    "type": "message",
-                    "id": new_msg.id,
-                    "sender": "client",
-                    "content": content,
-                    "created_at": new_msg.created_at.isoformat()
-                })
-
-                # Простой ответ (заглушка для ИИ-агента)
-                await websocket.send_json({
-                    "type": "message",
-                    "sender": "agent",
-                    "content": "Спасибо за ваше сообщение! ИИ-агент будет подключён в ближайшее время.",
-                    "created_at": new_msg.created_at.isoformat()
-                })
-
             except json.JSONDecodeError:
-                await websocket.send_json({
-                    "type": "error",
-                    "content": "Invalid JSON format"
-                })
+                await websocket.send_json({"type": "error", "content": "Invalid JSON format"})
+                continue
+
+            content = (msg_data.get("content") or "").strip()
+            if not content:
+                continue
+            if len(content) > 4000:
+                await websocket.send_json({"type": "error", "content": "Сообщение слишком длинное"})
+                continue
+
+            db = SessionLocal()
+            try:
+                new_msg = ChatMessage(
+                    task_id=task_id,
+                    sender=sender_type,
+                    content=content,
+                )
+                db.add(new_msg)
+                db.commit()
+                db.refresh(new_msg)
+
+                await manager.broadcast(task_id, _message_payload(new_msg))
+
+                # ИИ-агент отвечает только на сообщения клиента (как в Telegram-боте)
+                if sender_type == MessageSender.CLIENT:
+                    try:
+                        reply = await asyncio.to_thread(process_user_message_sync, task_id, db)
+                    except Exception as e:
+                        logger.error(f"Agent error in ws chat: {e}")
+                        reply = None
+                    if reply:
+                        agent_msg = (
+                            db.query(ChatMessage)
+                            .filter(ChatMessage.task_id == task_id, ChatMessage.sender == MessageSender.AGENT)
+                            .order_by(ChatMessage.created_at.desc())
+                            .first()
+                        )
+                        if agent_msg:
+                            await manager.broadcast(task_id, _message_payload(agent_msg))
+            finally:
+                db.close()
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, task_id)

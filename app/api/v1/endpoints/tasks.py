@@ -120,7 +120,9 @@ def update_task(
     """
     Обновление задачи.
     - Клиент может обновлять только свои задачи
-    - Дизайнер может обновлять статус и описание
+    - Дизайнер может обновлять уточнённое описание
+      (смена статуса — только через POST /{task_id}/status,
+      там действуют бизнес-правила по допустимым переходам)
     - Админ может обновлять всё
     """
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -151,7 +153,11 @@ def update_task(
                 )
 
     if is_designer and not is_admin:
-        allowed_fields = ["status", "clarified_description"]
+        # Смена статуса намеренно исключена: она обязана проходить через
+        # /{task_id}/status, где проверяются допустимые переходы. Если
+        # разрешить менять status и здесь, дизайнер сможет в обход правил
+        # выставить completed/rejected напрямую через PATCH.
+        allowed_fields = ["clarified_description"]
         for field in task_data.dict(exclude_unset=True):
             if field not in allowed_fields:
                 raise HTTPException(
@@ -205,7 +211,13 @@ def delete_task(
 @router.post("/{task_id}/status", response_model=TaskOut)
 def update_task_status(
         task_id: int,
-        status: TaskStatus,
+        # Параметр НЕ должен называться "status" — это имя затеняет
+        # импортированный модуль fastapi.status на всю функцию, и любой
+        # раньше здесь стоявший `status.HTTP_...` падал с AttributeError
+        # вместо возврата 403/404 (баг, из-за которого этот эндпоинт был
+        # неработоспособен для любого запрещённого перехода статуса).
+        # alias сохраняет прежнее имя query-параметра ?status=... для фронтенда.
+        new_status: TaskStatus = Query(..., alias="status"),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
 ):
@@ -234,30 +246,30 @@ def update_task_status(
         )
 
     if is_client and not is_admin:
-        if status != TaskStatus.COMPLETED:
+        if new_status != TaskStatus.COMPLETED:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Client can only set status to completed"
             )
 
     if is_designer and not is_admin:
-        if status == TaskStatus.COMPLETED:
+        if new_status == TaskStatus.COMPLETED:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Designer cannot set status to completed. Only client can."
             )
-        if status == TaskStatus.REJECTED:
+        if new_status == TaskStatus.REJECTED:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Designer cannot reject task. Only admin can."
             )
 
     old_status = task.status
-    task.status = status
+    task.status = new_status
     db.commit()
     db.refresh(task)
 
     # Уведомление об изменении статуса
-    notify_task_status_changed(db, task, old_status.value, status.value, current_user)
+    notify_task_status_changed(db, task, old_status.value, new_status.value, current_user)
 
     return task
